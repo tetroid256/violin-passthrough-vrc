@@ -1,0 +1,353 @@
+# ViolinPassthrough 設計書
+
+Quest 3 + Virtual Desktop + SteamVR + VRChat 環境で、バイオリンの手元（左手〜指板〜駒）だけを外界映像で見えるようにする SteamVR オーバーレイアプリ。
+
+この文書は Claude Code に実装させるための設計書です。実装時はこの文書を正とし、判断が必要な箇所は「未決事項」に追記してください。
+
+---
+
+## 1. 目的と前提
+
+### 目的
+- VRChat をプレイしたまま、バイオリンの手元だけを現実の映像で見る。
+- 範囲は「左手＋指板〜駒」。将来的に楽器全体、さらに複数領域へ拡張できる構造にする。
+- VRChat のアバターメニュー（OSC）でオン/オフを切り替える。
+- SteamVR 起動時に自動で立ち上がる。配布はしない（個人用）。
+
+### 前提環境
+- ヘッドセット: Meta Quest 3
+- PC 接続: Virtual Desktop（VD）経由で SteamVR
+- 常用オーバーレイ: XSOverlay、OVR Advanced Settings（OVRAS）
+- 入力: Quest のハンドトラッキング（VD 経由でコントローラーとしてエミュレートされる）
+
+### 技術的な前提（重要）
+- PC 側から Quest 3 のカメラ映像は取得できない。
+- VD には「VR Passthrough」機能（Streaming タブ）があり、指定した色（クロマキー）の画素をヘッドセット側でパススルー映像に置き換える。
+- よって本アプリは **映像処理をせず、「抜き色で塗った板」を頭に固定して表示するだけ** でよい。外界の映像合成は VD が行う。
+
+---
+
+## 2. 方式の全体像
+
+```
+[VRChat] ──描画──┐
+                  ├─▶ [SteamVR Compositor] ──映像──▶ [VD Streamer] ──▶ [Quest 3 / VD Client]
+[本アプリ]──Overlay┘     (抜き色の板を重ねる)                           抜き色の画素だけ
+   ▲                                                                  パススルー映像に置換
+   │ OSC (/avatar/parameters/...)
+[VRChat アバターメニュー]
+```
+
+1. 本アプリは OpenVR Overlay を1つ（将来は複数）作成する。
+2. 板は HMD 基準の固定位置に置き、マスク形状の内側をキー色（不透明）、外側を透明にしたテクスチャを貼る。
+3. SteamVR が VRChat の映像にこの板を合成し、VD に送る。
+4. VD クライアントがキー色の画素をパススルー映像に置き換える。
+5. VRChat のアバターメニューのトグル → OSC → 本アプリが板の表示/非表示を切り替える。
+
+### 先行事例
+ハンド/コントローラー追従でクロマキー窓を出す SteamVR アプリ（ChromaTrackOverlay）が存在する。仕組みの検証用に試すのも有効。
+
+---
+
+## 3. 技術選定
+
+| 項目 | 選定 | 理由 |
+|---|---|---|
+| 言語/ランタイム | C# / .NET 8（Windows, x64） | OSCQuery の公式ライブラリが C#。設定ファイルや非同期処理が書きやすい |
+| OpenVR | Valve 公式 `openvr_api.cs` + `openvr_api.dll`（ValveSoftware/openvr の最新リリース） | 追加依存なし |
+| テクスチャ転送 | `IVROverlay.SetOverlayRaw`（CPU バッファ） | マスクは静的で、パラメータ変更時だけ再生成すればよい。D3D11 コード不要 |
+| OSC 受信 | OSCQuery（VRChat 公式 `vrc-oscquery-lib`）＋ UDP 受信 | XSOverlay など他の OSC アプリと 9001 番ポートの取り合いを避ける |
+| OSC パース | 軽量ライブラリ、または自前の最小パーサ（`/avatar/parameters/*` の bool/int/float と `/avatar/change` のみ対応） | 必要な機能が少ない |
+| 設定 | JSON ファイル＋ホットリロード（FileSystemWatcher） | VR 内で XSOverlay のデスクトップ窓から編集し、即座に反映できる |
+| 実行形態 | WinExe（ウィンドウなし）＋ファイルログ | 自動起動時にコンソールが出ないように |
+
+---
+
+## 4. モジュール構成
+
+```
+ViolinPassthrough/
+├─ src/
+│  ├─ Program.cs                 エントリポイント。各モジュールの組み立てとメインループ
+│  ├─ App/
+│  │  ├─ AppLifecycle.cs         OpenVR 初期化、VREvent 処理、終了処理、マニフェスト登録
+│  │  └─ MainLoop.cs             約 30Hz の更新ループ（イベント処理・状態反映）
+│  ├─ Config/
+│  │  ├─ AppConfig.cs            設定のデータモデル
+│  │  └─ ConfigStore.cs          JSON 読み書き、ホットリロード、検証
+│  ├─ Mask/
+│  │  ├─ MaskRegion.cs           1つのマスク領域（形状・アンカー・姿勢・サイズ）
+│  │  ├─ MaskShape.cs            形状の抽象（Ellipse / RoundedRect / Polygon）
+│  │  ├─ MaskRasterizer.cs       形状 → RGBA バッファ生成
+│  │  └─ MaskOverlay.cs          1領域 = 1 OpenVR Overlay のラッパー
+│  ├─ Anchor/
+│  │  ├─ IAnchor.cs              領域の基準座標系の抽象
+│  │  ├─ HmdAnchor.cs            HMD 基準（MVP はこれだけ実装）
+│  │  ├─ WorldAnchor.cs          （将来）ルーム空間に固定
+│  │  └─ DeviceAnchor.cs         （将来）手・トラッカーに追従
+│  ├─ Osc/
+│  │  ├─ OscService.cs           OSCQuery 広告、UDP 受信、VRChat への送信
+│  │  └─ OscBindings.cs          パラメータ名 → アクションの対応付け
+│  └─ State/
+│     └─ PassthroughState.cs     現在の状態（有効/無効、プリセット、デバッグ表示）
+├─ resources/
+│  ├─ manifest.vrmanifest
+│  └─ config.default.json
+└─ DESIGN.md
+```
+
+### 責務と依存の方向
+- `State` が唯一の状態の持ち主。`Osc` と `Config` は `State` を更新するだけ。
+- `MaskOverlay` は `State` と `MaskRegion` を見て、OpenVR に反映する。
+- OpenVR API を呼ぶのは `AppLifecycle` と `MaskOverlay` だけ（テストしやすくするため）。
+
+---
+
+## 5. 拡張性の設計
+
+将来「楽器全体」「複数の窓」「手に追従」に広げられるよう、次の2軸で抽象化する。
+
+### 5.1 マスク領域は複数持てる
+- 設定では `regions` を配列で持つ。MVP では 1 要素のみ使う。
+- 1 領域 = 1 OpenVR Overlay。オーバーレイのキーは `violinpassthrough.region.<id>` とする。
+- プリセット（例: `fingerboard` / `whole`）は、有効にする領域 ID の集合として定義する。
+
+### 5.2 アンカーを差し替えられる
+- `IAnchor` は「どのデバイス基準で、どの相対姿勢に置くか」を返す。
+  - `HmdAnchor`: `SetOverlayTransformTrackedDeviceRelative(k_unTrackedDeviceIndex_Hmd, pose)` を使う。毎フレームの更新は不要。
+  - `WorldAnchor`（将来）: `SetOverlayTransformAbsolute`。
+  - `DeviceAnchor`（将来）: 手のコントローラーのインデックスを `GetTrackedDeviceIndexForControllerRole` で解決し、相対姿勢で固定する。ハンドトラッキングの場合、VD がエミュレートするコントローラーの姿勢になる。ロスト時の扱い（最後の姿勢で保持／非表示）を設定で選べるようにする。
+
+### 5.3 形状を差し替えられる
+- `Ellipse`（MVP の既定）、`RoundedRect`、`Polygon`（頂点リスト）を用意する。
+- 楽器全体に広げるときは、`Polygon` で斜めに長い形を作るか、複数領域を組み合わせる。
+
+---
+
+## 6. マスクの描画仕様
+
+### 座標系
+OpenVR の HMD 座標系に従う。単位はメートル。+X が右、+Y が上、**-Z が前方**。
+
+### テクスチャ
+- サイズは長辺 512px（設定で変更可）。短辺は領域の縦横比に合わせる。
+- 形状の内側はキー色で α=255、外側は α=0。
+- 縁の処理は `edgeMode` で選ぶ。
+  - `hard`（既定）: 縁にアンチエイリアスをかけない。中間色ができないので、キーの抜けが安定する。
+  - `aa`: 1〜2px のアンチエイリアス。縁のギザギザは減るが、中間色の画素が抜けきらず縁取りが残る可能性がある。実機で比較する。
+- 再生成は、設定変更時とプリセット変更時だけ行う。
+
+### オーバーレイの設定
+- `SetOverlayWidthInMeters(region.widthMeters)`
+- `SetOverlayAlpha(1.0)`、`SetOverlayColor(1,1,1)`（色の乗算でキー色が変わらないように）
+- `SetOverlaySortOrder(config.sortOrder)`（既定は高め。XSOverlay の窓が手前に来ると窓の部分は抜けない点に注意）
+- 表示/非表示は `ShowOverlay` / `HideOverlay`
+
+### 初期配置の目安（実機で調整する前提）
+バイオリンは顎で挟むので、頭と楽器の位置関係がほぼ一定になる。そのため HMD 固定で十分な精度が期待できる。
+
+| パラメータ | 初期値 | 意味 |
+|---|---|---|
+| position | (-0.15, -0.15, -0.40) | 視点から左下前方 |
+| rotation（オイラー角, 度） | (pitch 15, yaw 20, roll -15) | 指板の方向に沿わせる |
+| width × height | 0.45 m × 0.25 m | 駒〜左手をカバー |
+| shape | Ellipse | |
+| margin | 0.03 m | 縁に足す余白 |
+
+### 視差について
+楽器は奥行き方向に 0.15〜0.6m ほど広がっているが、マスクは1枚の平面である。左右の目でマスクの見える位置がずれるため、`margin` で少し大きめに取って吸収する。将来は奥行きの違う複数領域や、曲面の Polygon で改善できる。
+
+### デバッグ表示
+`debugVisible = true` のとき、キー色ではなく半透明の赤＋白い枠で描画する（抜けないので、マスクの位置を VR 内で確認できる）。OSC と設定の両方から切り替えられる。
+
+---
+
+## 7. 設定ファイル
+
+場所: `%APPDATA%\ViolinPassthrough\config.json`（初回起動時に `config.default.json` をコピーする）
+
+```json
+{
+  "keyColor": { "r": 255, "g": 0, "b": 255 },
+  "edgeMode": "hard",
+  "textureLongSide": 512,
+  "sortOrder": 100,
+  "startEnabled": false,
+  "activePreset": "fingerboard",
+  "presets": {
+    "fingerboard": ["fingerboard"],
+    "whole": ["fingerboard", "body"]
+  },
+  "regions": [
+    {
+      "id": "fingerboard",
+      "anchor": { "type": "hmd" },
+      "shape": { "type": "ellipse" },
+      "position": [-0.15, -0.15, -0.40],
+      "rotationEulerDeg": [15, 20, -15],
+      "widthMeters": 0.45,
+      "heightMeters": 0.25,
+      "marginMeters": 0.03
+    },
+    {
+      "id": "body",
+      "anchor": { "type": "hmd" },
+      "shape": { "type": "roundedRect", "cornerRadius": 0.05 },
+      "position": [-0.05, -0.22, -0.30],
+      "rotationEulerDeg": [30, 10, -15],
+      "widthMeters": 0.30,
+      "heightMeters": 0.20,
+      "marginMeters": 0.03
+    }
+  ],
+  "osc": {
+    "useOscQuery": true,
+    "fallbackListenPort": 9011,
+    "vrchatSendHost": "127.0.0.1",
+    "vrchatSendPort": 9000,
+    "parameters": {
+      "enabled": "HandPassthrough",
+      "preset": "HandPassthroughPreset",
+      "debug": "HandPassthroughDebug"
+    }
+  },
+  "logLevel": "Info"
+}
+```
+
+- キー色は VD 側の設定と完全に一致させる。VRChat のワールドに出てきにくい色（マゼンタ系など）を選ぶ。
+- 設定が壊れていたら、前回の正常な設定を維持してログに警告を出す（クラッシュさせない）。
+
+---
+
+## 8. OSC 仕様
+
+### 受信（VRChat → 本アプリ）
+| アドレス | 型 | 動作 |
+|---|---|---|
+| `/avatar/parameters/HandPassthrough` | bool | 有効/無効 |
+| `/avatar/parameters/HandPassthroughPreset` | int | 0 = fingerboard, 1 = whole（設定の presets の順番に対応） |
+| `/avatar/parameters/HandPassthroughDebug` | bool | デバッグ表示 |
+| `/avatar/change` | string | アバター変更。状態は維持し、現在値を VRChat に送り返す |
+
+### 送信（本アプリ → VRChat, 127.0.0.1:9000）
+- アバター変更時と起動時に、現在の状態を上記パラメータに送る。メニューの表示と実際の状態を一致させるため。
+
+### OSCQuery
+- `vrc-oscquery-lib` でサービスを広告し、空いている UDP ポートで受信する。VRChat は広告されたポートに送ってくるので、9001 を他アプリと奪い合わない。
+- OSCQuery が使えない場合は `fallbackListenPort` で待ち受ける（その場合、VRChat 側の送信先をそのポートにする必要がある）。
+
+---
+
+## 9. VRChat アバター側の設定（ユーザー作業）
+
+1. Expression Parameters に追加する。
+   - `HandPassthrough`（Bool、既定 false、**Synced のチェックを外す**。ローカル専用なので同期ビットを消費しない）
+   - `HandPassthroughPreset`（Int、既定 0、Synced を外す）
+   - `HandPassthroughDebug`（Bool、既定 false、Synced を外す）
+2. Expressions Menu に Toggle（HandPassthrough）、Toggle（Debug）、必要なら Radial/Sub Menu（Preset）を追加する。
+3. アニメーターの変更は不要（パラメータを OSC で読むだけ）。
+4. 使うアバターすべてに同じパラメータを入れる。
+5. VRChat の Action Menu → Options → OSC → Enabled を ON にする。アバターを更新したら OSC の Reset Config を実行する。
+
+---
+
+## 10. 周辺アプリの設定（ユーザー作業）
+
+### Virtual Desktop
+- Streaming タブで VR Passthrough を有効にし、クロマキーの色を `keyColor` と一致させる。
+- Similarity は低め、Smoothness は小さめから調整する。
+- 映像のシャープネスなど、色や縁に影響する補正はオフにして比較する。
+- コーデックは 10bit（HEVC 10bit / AV1 10bit）のほうが色ずれが少なく、キーが安定しやすい。
+
+### OVR Advanced Settings
+- 明るさや色の調整機能は、合成後の色を変えてしまいキーが抜けなくなる。使う場合はオフにして比較する。
+
+### XSOverlay
+- XSOverlay の窓がマスクの手前に重なると、その部分は抜けない。演奏中はマスクの範囲に窓を置かない。
+- 本アプリの設定ファイルを XSOverlay のデスクトップ窓で編集すると、VR 内で位置を調整できる。
+
+### ハンドトラッキングの誤入力
+- 演奏中の指の形がピンチなどのジェスチャーとして誤認され、VRChat に意図しない入力が入る可能性がある。VD 側のハンドトラッキングのジェスチャー設定を確認する。これは本アプリの範囲外。
+
+---
+
+## 11. 起動と終了
+
+- 初回起動時に `IVRApplications.AddApplicationManifest` で `manifest.vrmanifest` を登録し、`SetApplicationAutoLaunch(appKey, true)` を設定する。
+- `VR_Init` は `EVRApplicationType.VRApplication_Overlay` で行う。
+- SteamVR が起動していなければ待機して再試行する（手動起動にも対応）。
+- `VREvent_Quit` を受けたら `AcknowledgeQuit_Exiting` を呼び、オーバーレイを破棄して終了する。
+- 多重起動は名前付き Mutex で防ぐ。
+
+`manifest.vrmanifest` の例:
+```json
+{
+  "source": "builtin",
+  "applications": [{
+    "app_key": "local.violinpassthrough",
+    "launch_type": "binary",
+    "binary_path_windows": "ViolinPassthrough.exe",
+    "is_dashboard_overlay": true,
+    "strings": { "en_us": { "name": "Violin Passthrough", "description": "Chroma-key hand passthrough mask" } }
+  }]
+}
+```
+
+---
+
+## 12. 実装フェーズ
+
+各フェーズの完了条件を満たしてから次へ進む。
+
+### Phase 1: 抜け確認（最小構成）
+- OpenVR 初期化、HMD 固定の楕円オーバーレイを1枚、キー色で表示する。設定はハードコードでよい。
+- 完了条件: VD のパススルーを有効にした状態で、VR 内の左下に楕円の「外界が見える窓」が出る。
+
+### Phase 2: 設定ファイルとホットリロード
+- `AppConfig` / `ConfigStore` を実装し、位置・サイズ・形状・色を JSON から読む。
+- デバッグ表示（赤＋枠）を実装する。
+- 完了条件: 設定ファイルを保存すると1秒以内に VR 内の表示が変わる。不正な JSON でも落ちない。
+
+### Phase 3: OSC 切り替え
+- OSCQuery による受信、パラメータのバインド、状態の送り返しを実装する。
+- 完了条件: VRChat のアバターメニューのトグルで窓が出たり消えたりする。XSOverlay と同時に起動しても動く。
+
+### Phase 4: 自動起動と常駐
+- マニフェスト登録、自動起動、終了処理、多重起動防止、ファイルログを実装する。
+- 完了条件: SteamVR を起動するだけで本アプリが立ち上がり、SteamVR を終了すると本アプリも終了する。
+
+### Phase 5（将来）: 拡張
+- 複数領域とプリセット、`Polygon` 形状、`WorldAnchor` / `DeviceAnchor`。
+
+---
+
+## 13. リスクと対策
+
+| リスク | 影響 | 対策 |
+|---|---|---|
+| ワールド内にキー色に近い色がある | 意図しない場所が透ける | 珍しい色を選ぶ。Similarity を下げる |
+| 映像圧縮で色がずれる | 縁が抜けない、ノイズが出る | 10bit コーデック。`edgeMode: hard`。Similarity/Smoothness の調整 |
+| 他アプリの色補正 | 全体が抜けない | OVRAS などの色補正をオフにする |
+| 左右の目の視差 | 縁で楽器が少し切れる | `margin` を増やす。将来は奥行き別の複数領域 |
+| 演奏中に頭と楽器の位置関係がずれる | 窓から楽器がはみ出す | 余白を取る。将来は `DeviceAnchor` で手に追従 |
+| OSC ポートの競合 | トグルが効かない | OSCQuery を使う。フォールバックポートを設定可能にする |
+| オーバーレイの重なり順 | XSOverlay の窓の部分が抜けない | `sortOrder` を設定可能にする。運用で窓をよける |
+
+---
+
+## 14. Claude Code への指示
+
+- この設計書の Phase 1 から順に実装すること。各 Phase の完了時に、ユーザーが実機で確認する手順を短くまとめて提示すること。
+- OpenVR API の呼び出しは `AppLifecycle` と `MaskOverlay` に閉じ込めること。
+- 戻り値の `EVROverlayError` は必ず確認し、エラー時はログに出すこと。
+- `openvr_api.cs` / `openvr_api.dll` は ValveSoftware/openvr の最新リリースから取得し、バージョンを README に記録すること。
+- 実機（VR）でしか確認できない部分は、ユーザーに確認を依頼すること。推測で完了扱いにしないこと。
+- 設計と異なる判断をした場合は、この文書の「未決事項」に理由とともに追記すること。
+
+---
+
+## 未決事項
+- キー色の最終決定（実機で VRChat のワールドを見ながら決める）
+- `edgeMode` の既定値（hard と aa を実機で比較して決める）
+- 初期配置の数値（実機でデバッグ表示を使って調整する）
