@@ -20,21 +20,41 @@ internal static partial class Program
           --help         この説明を出す
         """;
 
+    private enum ConsoleKind
+    {
+        None,
+        Attached,
+        Allocated,
+    }
+
     private static int Main(string[] args)
     {
         if (!CommandLine.TryParse(args, out var options, out var error))
         {
-            AttachConsole();
+            var kind = AttachConsole();
             Console.Error.WriteLine(error);
             Console.Error.WriteLine(Usage);
+            PauseIfAllocated(kind);
             return 2;
         }
 
         if (options.ShowHelp)
         {
-            AttachConsole();
+            var kind = AttachConsole();
             Console.WriteLine(Usage);
+            PauseIfAllocated(kind);
             return 0;
+        }
+
+        if (options.Unregister)
+        {
+            // 起動中のインスタンス（SteamVR が自動起動したもの）がいても実行できるように、Mutex は取らない。
+            // そのインスタンスのログを壊さないように、ファイルには書かずコンソールにだけ出す。
+            var kind = AttachConsole();
+            Log.AddSink(Console.WriteLine);
+            var code = Unregister();
+            PauseIfAllocated(kind);
+            return code;
         }
 
         if (options.Console)
@@ -43,92 +63,116 @@ internal static partial class Program
             Log.AddSink(Console.WriteLine);
         }
 
-        using var fileLog = TryCreateFileLog();
-        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-            Log.Error("Unhandled exception", e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString()));
-
-        Log.Info($"Violin Passthrough {typeof(Program).Assembly.GetName().Version} starting ({Environment.ProcessPath}).");
-
         using var mutex = new Mutex(initiallyOwned: false, MutexName);
-        if (!TryAcquire(mutex))
+        if (!TryAcquire(mutex, out var abandoned))
         {
+            // 起動中のインスタンスのログを壊さないように、ファイルログを開く前に終える。
             Log.Info("Another instance is already running. Exiting.");
             return 0;
         }
 
         try
         {
-            return options.Unregister ? Unregister() : Run(options);
-        }
-        catch (Exception ex)
-        {
-            Log.Error("Fatal error", ex);
-            return 1;
+            using var fileLog = TryCreateFileLog();
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+                Log.Error("Unhandled exception", e.ExceptionObject as Exception ?? new Exception(e.ExceptionObject?.ToString()));
+
+            Log.Info($"Violin Passthrough {typeof(Program).Assembly.GetName().Version} starting ({Environment.ProcessPath}).");
+            if (abandoned)
+            {
+                Log.Warn("The previous instance did not exit cleanly.");
+            }
+
+            try
+            {
+                return Run(options);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("Fatal error", ex);
+                return 1;
+            }
+            finally
+            {
+                Log.Info("Violin Passthrough exiting.");
+            }
         }
         finally
         {
             mutex.ReleaseMutex();
-            Log.Info("Violin Passthrough exiting.");
         }
     }
 
     private static int Run(CommandLineOptions options)
     {
         using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) =>
+        // Ctrl+C（--console のとき）で終了する。cts を破棄した後に呼ばれないよう、終わったら外す。
+        ConsoleCancelEventHandler onCancel = (_, e) =>
         {
             e.Cancel = true;
             cts.Cancel();
         };
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => cts.Cancel();
-
-        using var configStore = new ConfigStore(options.ConfigPath ?? ConfigStore.DefaultPath);
-        configStore.Initialize();
-        configStore.StartWatching();
-        Log.MinLevel = configStore.Current.LogLevel;
-
-        using var lifecycle = new AppLifecycle();
-        if (!lifecycle.WaitForRuntimeAndInit(cts.Token))
+        Console.CancelKeyPress += onCancel;
+        try
         {
+            using var configStore = new ConfigStore(options.ConfigPath ?? ConfigStore.DefaultPath);
+            configStore.Initialize();
+            configStore.StartWatching();
+            Log.MinLevel = configStore.Current.LogLevel;
+
+            using var lifecycle = new AppLifecycle();
+            if (!lifecycle.WaitForRuntimeAndInit(cts.Token))
+            {
+                return 0;
+            }
+
+            lifecycle.RegisterManifest(ManifestPath, Environment.ProcessPath ?? string.Empty);
+
+            var state = MainLoop.CreateInitialState(configStore.Current);
+            Log.Info($"Initial state: {state}.");
+
+            using (var overlays = new MaskOverlaySet(id => new MaskOverlay(id)))
+            using (var loop = new MainLoop(lifecycle, configStore, state, overlays, StartOsc))
+            {
+                if (loop.Run(cts.Token))
+                {
+                    // SteamVR の終了: 応答してから、オーバーレイを破棄して終了する。
+                    lifecycle.AcknowledgeQuit();
+                }
+            }
+
             return 0;
         }
-
-        lifecycle.RegisterManifest(ManifestPath, Environment.ProcessPath ?? string.Empty);
-
-        var state = MainLoop.CreateInitialState(configStore.Current);
-        Log.Info($"Initial state: {state}.");
-
-        using (var overlays = new MaskOverlaySet(id => new MaskOverlay(id)))
-        using (var loop = new MainLoop(lifecycle, configStore, state, overlays, StartOsc))
+        finally
         {
-            if (loop.Run(cts.Token))
-            {
-                // SteamVR の終了: 応答してから、オーバーレイを破棄して終了する。
-                lifecycle.AcknowledgeQuit();
-            }
+            Console.CancelKeyPress -= onCancel;
         }
-
-        return 0;
     }
 
     private static int Unregister()
     {
         using var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) =>
+        ConsoleCancelEventHandler onCancel = (_, e) =>
         {
             e.Cancel = true;
             cts.Cancel();
         };
-
-        Log.Info("Unregistering. Start SteamVR if it is not running.");
-        using var lifecycle = new AppLifecycle();
-        if (!lifecycle.WaitForRuntimeAndInit(cts.Token))
+        Console.CancelKeyPress += onCancel;
+        try
         {
-            return 1;
-        }
+            Log.Info("Unregistering from SteamVR. Start SteamVR if it is not running (Ctrl+C to cancel).");
+            using var lifecycle = new AppLifecycle();
+            if (!lifecycle.WaitForRuntimeAndInit(cts.Token))
+            {
+                return 1;
+            }
 
-        lifecycle.UnregisterManifest(ManifestPath);
-        return 0;
+            return lifecycle.UnregisterManifest(ManifestPath) ? 0 : 1;
+        }
+        finally
+        {
+            Console.CancelKeyPress -= onCancel;
+        }
     }
 
     private static string ManifestPath => Path.Combine(AppContext.BaseDirectory, AppLifecycle.ManifestFileName);
@@ -162,8 +206,9 @@ internal static partial class Program
         }
     }
 
-    private static bool TryAcquire(Mutex mutex)
+    private static bool TryAcquire(Mutex mutex, out bool abandoned)
     {
+        abandoned = false;
         try
         {
             return mutex.WaitOne(TimeSpan.Zero);
@@ -171,23 +216,43 @@ internal static partial class Program
         catch (AbandonedMutexException)
         {
             // 前のインスタンスが異常終了した。所有権はこちらに移っている。
-            Log.Warn("The previous instance did not exit cleanly.");
+            abandoned = true;
             return true;
         }
     }
 
     /// <summary>WinExe なのでコンソールが無い。親のコンソールに繋ぐか、新しく開く。</summary>
-    private static void AttachConsole()
+    private static ConsoleKind AttachConsole()
     {
         if (!OperatingSystem.IsWindows())
+        {
+            return ConsoleKind.Attached;
+        }
+
+        const int AttachParentProcess = -1;
+        if (AttachConsoleNative(AttachParentProcess))
+        {
+            return ConsoleKind.Attached;
+        }
+
+        return AllocConsoleNative() ? ConsoleKind.Allocated : ConsoleKind.None;
+    }
+
+    /// <summary>新しく開いた窓は終了と同時に閉じるので、読めるようにキー入力を待つ。</summary>
+    private static void PauseIfAllocated(ConsoleKind kind)
+    {
+        if (kind != ConsoleKind.Allocated)
         {
             return;
         }
 
-        const int AttachParentProcess = -1;
-        if (!AttachConsoleNative(AttachParentProcess))
+        try
         {
-            AllocConsoleNative();
+            Console.WriteLine("Press any key to close.");
+            Console.ReadKey(intercept: true);
+        }
+        catch (InvalidOperationException)
+        {
         }
     }
 

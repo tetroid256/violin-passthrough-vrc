@@ -211,19 +211,22 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
     }
 
     /// <summary>自動起動を止め、マニフェストの登録を消す（--unregister）。</summary>
-    public void UnregisterManifest(string manifestPath)
+    /// <returns>すべて成功したら true。</returns>
+    public bool UnregisterManifest(string manifestPath)
     {
         var apps = OpenVR.Applications;
         if (!_initialized || apps is null)
         {
             Log.Error("Cannot unregister the manifest: IVRApplications is not available.");
-            return;
+            return false;
         }
+
+        var ok = true;
 
         var manifests = new List<string> { manifestPath };
         if (apps.IsApplicationInstalled(AppKey))
         {
-            CheckApplications(apps, apps.SetApplicationAutoLaunch(AppKey, false), "SetApplicationAutoLaunch(false)");
+            ok &= CheckApplications(apps, apps.SetApplicationAutoLaunch(AppKey, false), "SetApplicationAutoLaunch(false)");
 
             // 別の場所から登録されている場合は、そちらのマニフェストも消す。
             if (GetRegisteredBinaryPath(apps) is { } registered)
@@ -242,7 +245,13 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
             {
                 Log.Info($"Unregistered {manifest} from SteamVR.");
             }
+            else
+            {
+                ok = false;
+            }
         }
+
+        return ok;
     }
 
     /// <summary>VREvent_Quit への応答。この後すぐにオーバーレイを破棄して終了すること。</summary>

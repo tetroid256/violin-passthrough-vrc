@@ -24,7 +24,7 @@ public interface IOscEndpoint : IDisposable
 /// </summary>
 public sealed class OscService : IOscEndpoint
 {
-    public const string ServiceName = "ViolinPassthrough";
+    public const string ServiceNamePrefix = "ViolinPassthrough";
     private const int MaxQueuedMessages = 256;
 
     private readonly ConcurrentQueue<OscMessage> _queue = new();
@@ -33,6 +33,8 @@ public sealed class OscService : IOscEndpoint
     private UdpClient? _sender;
     private IPEndPoint? _sendTo;
     private OSCQueryService? _oscQuery;
+    private MeaModDiscovery? _discovery;
+    private string _serviceName = ServiceNamePrefix;
     private Thread? _receiveThread;
     private volatile bool _disposed;
 
@@ -45,6 +47,9 @@ public sealed class OscService : IOscEndpoint
     public int? ListenPort { get; private set; }
 
     public bool UsingOscQuery { get; private set; }
+
+    /// <summary>OSCQuery の HTTP サーバーのポート（テスト用）。</summary>
+    internal int? HttpPort { get; private set; }
 
     public static OscService Start(OscSettings settings)
     {
@@ -84,14 +89,7 @@ public sealed class OscService : IOscEndpoint
         }
 
         _disposed = true;
-        try
-        {
-            _oscQuery?.Dispose();
-        }
-        catch (Exception ex)
-        {
-            Log.Warn($"Failed to stop OSCQuery: {ex.Message}");
-        }
+        StopOscQuery();
 
         _receiver?.Dispose();
         _sender?.Dispose();
@@ -130,13 +128,17 @@ public sealed class OscService : IOscEndpoint
             var udpPort = ((IPEndPoint)_receiver.Client.LocalEndPoint!).Port;
             var tcpPort = Extensions.GetAvailableTcpPort();
 
+            // 起動ごとに名前を変える。古いポートの広告が VRChat に残っていても、新しい方と混ざらないように。
+            _serviceName = $"{ServiceNamePrefix}-{Random.Shared.Next(0x10000):x4}";
+
             // Builder の WithDefaults は途中で失敗すると後始末できないので、手順を分けて呼ぶ。
             // ポートなどを設定しただけの Build() は、サーバーを起動せずにサービスを返す。
+            var logger = new OscQueryLogger();
             _oscQuery = new OSCQueryServiceBuilder()
-                .WithServiceName(ServiceName)
+                .WithServiceName(_serviceName)
                 .WithTcpPort(tcpPort)
                 .WithUdpPort(udpPort)
-                .WithLogger(new OscQueryLogger())
+                .WithLogger(logger)
                 .Build();
 
             // VRChat は /avatar を持つサービスにアバターの値を送ってくる。広告する前に登録しておく。
@@ -146,38 +148,64 @@ public sealed class OscService : IOscEndpoint
             _oscQuery.AddEndpoint<bool>(OscBindings.ParameterPrefix + settings.DebugParameter, Attributes.AccessValues.WriteOnly, null, "Passthrough debug display");
 
             _oscQuery.StartHttpServer();
-            _oscQuery.SetDiscovery(new MeaModDiscovery());
-            _oscQuery.AdvertiseOSCQueryService(ServiceName, tcpPort);
-            _oscQuery.AdvertiseOSCService(ServiceName, udpPort);
-
+            // 広告する前に、HTTP サーバーが応答するかを確かめる（使えないサービスを広告しないため）。
             if (!IsHttpServerReachable(tcpPort))
             {
                 throw new InvalidOperationException($"OSCQuery HTTP server on port {tcpPort} is not reachable");
             }
 
+            HttpPort = tcpPort;
             ListenPort = udpPort;
+            _discovery = new MeaModDiscovery(logger);
+            _oscQuery.SetDiscovery(_discovery);
+            _oscQuery.AdvertiseOSCQueryService(_serviceName, tcpPort);
+            _oscQuery.AdvertiseOSCService(_serviceName, udpPort);
+
             UsingOscQuery = true;
-            Log.Info($"OSCQuery advertised as \"{ServiceName}\" (HTTP {tcpPort}, OSC UDP 127.0.0.1:{udpPort}).");
+            Log.Info($"OSCQuery advertised as \"{_serviceName}\" (HTTP {tcpPort}, OSC UDP 127.0.0.1:{udpPort}).");
             StartReceiveThread();
             return true;
         }
         catch (Exception ex)
         {
             Log.Warn($"OSCQuery could not start ({ex.Message}). Falling back to port {settings.FallbackListenPort}.");
-            try
-            {
-                _oscQuery?.Dispose();
-            }
-            catch (Exception disposeError)
-            {
-                Log.Debug($"OSCQuery dispose failed: {disposeError.Message}");
-            }
-
-            _oscQuery = null;
+            StopOscQuery();
             _receiver?.Dispose();
             _receiver = null;
+            ListenPort = null;
+            HttpPort = null;
             return false;
         }
+    }
+
+    /// <summary>広告を取り消して（mDNS の goodbye を送って）から、HTTP サーバーと mDNS を止める。</summary>
+    private void StopOscQuery()
+    {
+        if (_discovery is not null && UsingOscQuery && HttpPort is { } tcpPort && ListenPort is { } udpPort)
+        {
+            try
+            {
+                _discovery.Unadvertise(new OSCQueryServiceProfile(_serviceName, IPAddress.Loopback, tcpPort, OSCQueryServiceProfile.ServiceType.OSCQuery));
+                _discovery.Unadvertise(new OSCQueryServiceProfile(_serviceName, IPAddress.Loopback, udpPort, OSCQueryServiceProfile.ServiceType.OSC));
+            }
+            catch (Exception ex)
+            {
+                Log.Debug($"OSCQuery unadvertise failed: {ex.Message}");
+            }
+        }
+
+        try
+        {
+            _oscQuery?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Failed to stop OSCQuery: {ex.Message}");
+        }
+
+        _oscQuery = null;
+        _discovery = null;
+        UsingOscQuery = false;
     }
 
     private static bool IsHttpServerReachable(int tcpPort)

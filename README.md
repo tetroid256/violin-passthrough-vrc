@@ -32,7 +32,7 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 |---|---|
 | `--console` | ログをコンソール窓にも出す（通常は窓を出さず、`%APPDATA%\ViolinPassthrough\logs\` にだけ書く） |
 | `--config PATH` | 設定ファイルの場所を変える |
-| `--unregister` | SteamVR の自動起動とマニフェストの登録を解除して終了する（SteamVR の起動が必要） |
+| `--unregister` | SteamVR の自動起動とマニフェストの登録を解除して終了する（SteamVR の起動が必要。本アプリの起動中でも実行できる） |
 | `--help` | オプションの説明 |
 
 - SteamVR が起動していないときに起動すると、SteamVR が起動するまで待つ（SteamVR を勝手に起動しない）。

@@ -65,7 +65,7 @@ public class OscServiceTests
     }
 
     [Fact]
-    public void OscQuery_StartsOrFallsBack_AndReceives()
+    public async Task OscQuery_StartsOrFallsBack_AndReceives()
     {
         // OSCQuery（mDNS / HTTP）が使えない環境でも、例外を出さずにフォールバックして受信できること。
         var settings = TestConfigs.Default.Osc with { FallbackListenPort = FreeUdpPort() };
@@ -80,6 +80,24 @@ public class OscServiceTests
             // Windows（実機と同じ環境）では OSCQuery で起動できること。
             Assert.True(service.UsingOscQuery, "OSCQuery did not start on Windows:\n" + string.Join("\n", log.Where(l => l.Contains("OSC"))));
             Assert.NotEqual(settings.FallbackListenPort, service.ListenPort);
+
+            // VRChat が読む HOST_INFO とエンドポイントの木。
+            using var http = new HttpClient(new HttpClientHandler { UseProxy = false });
+            var baseUrl = $"http://127.0.0.1:{service.HttpPort}";
+            using var hostInfo = System.Text.Json.JsonDocument.Parse(await http.GetStringAsync(baseUrl + "/?HOST_INFO"));
+            Assert.Equal(service.ListenPort, hostInfo.RootElement.GetProperty("OSC_PORT").GetInt32());
+            Assert.Equal("127.0.0.1", hostInfo.RootElement.GetProperty("OSC_IP").GetString());
+            foreach (var (path, type) in new[]
+            {
+                ("/avatar/change", "s"),
+                ("/avatar/parameters/HandPassthrough", "T"),
+                ("/avatar/parameters/HandPassthroughPreset", "i"),
+                ("/avatar/parameters/HandPassthroughDebug", "T"),
+            })
+            {
+                using var node = System.Text.Json.JsonDocument.Parse(await http.GetStringAsync(baseUrl + path));
+                Assert.Equal(type, node.RootElement.GetProperty("TYPE").GetString());
+            }
         }
 
         using var sender = new UdpClient();

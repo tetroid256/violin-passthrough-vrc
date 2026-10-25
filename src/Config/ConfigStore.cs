@@ -47,7 +47,7 @@ public sealed class ConfigStore : IConfigSource, IDisposable
 
     /// <summary>%APPDATA%\ViolinPassthrough\config.json</summary>
     public static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify),
         "ViolinPassthrough",
         "config.json");
 

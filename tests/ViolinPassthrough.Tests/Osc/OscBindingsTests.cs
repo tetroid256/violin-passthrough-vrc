@@ -75,12 +75,17 @@ public class OscBindingsTests
         Assert.Single(_bindings.BuildSyncMessages(_state, TestConfigs.Default, _vrchat), m => m.Address == Preset);
     }
 
-    [Fact]
-    public void Preset_AcceptsFloat()
+    [Theory]
+    [InlineData(0.8f, "whole")]
+    [InlineData(0.5f, "whole")]
+    [InlineData(0.49f, "fingerboard")]
+    public void Preset_AcceptsFloat_RoundingHalfUp(float value, string expected)
     {
-        Apply(Preset, 0.8f);
+        _state.SetActivePreset(expected == "whole" ? "fingerboard" : "whole");
 
-        Assert.Equal("whole", _state.ActivePreset);
+        Apply(Preset, value);
+
+        Assert.Equal(expected, _state.ActivePreset);
     }
 
     [Fact]

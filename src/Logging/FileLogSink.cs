@@ -15,6 +15,7 @@ public sealed class FileLogSink : IDisposable
     private readonly Func<DateTime> _now;
     private StreamWriter? _writer;
     private DateOnly _currentDate;
+    private bool _disposed;
 
     public FileLogSink(string directory, int keepDays = 7, Func<DateTime>? now = null)
     {
@@ -26,7 +27,7 @@ public sealed class FileLogSink : IDisposable
 
     /// <summary>%APPDATA%\ViolinPassthrough\logs</summary>
     public static string DefaultDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData, Environment.SpecialFolderOption.DoNotVerify),
         "ViolinPassthrough",
         "logs");
 
@@ -36,6 +37,12 @@ public sealed class FileLogSink : IDisposable
     {
         lock (_gate)
         {
+            // 終了処理の後に書かれても、ファイルを開き直さない。
+            if (_disposed)
+            {
+                return;
+            }
+
             var today = DateOnly.FromDateTime(_now());
             if (_writer is null || today != _currentDate)
             {
@@ -50,6 +57,7 @@ public sealed class FileLogSink : IDisposable
     {
         lock (_gate)
         {
+            _disposed = true;
             _writer?.Dispose();
             _writer = null;
         }
@@ -58,10 +66,14 @@ public sealed class FileLogSink : IDisposable
     private void Open(DateOnly date)
     {
         _writer?.Dispose();
-        _currentDate = date;
-        CurrentPath = Path.Combine(_directory, $"{FilePrefix}{date:yyyyMMdd}{FileExtension}");
-        var stream = new FileStream(CurrentPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        // 開くのに失敗したら、次の書き込みでやり直す（壊れた writer を残さない）。
+        _writer = null;
+        Directory.CreateDirectory(_directory);
+        var path = Path.Combine(_directory, $"{FilePrefix}{date:yyyyMMdd}{FileExtension}");
+        var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
         _writer = new StreamWriter(stream) { AutoFlush = true };
+        _currentDate = date;
+        CurrentPath = path;
         DeleteOldFiles(date);
     }
 

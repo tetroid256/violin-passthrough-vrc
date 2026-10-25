@@ -198,7 +198,7 @@ public sealed class OscBindings
                 result = i;
                 return true;
             case float f when float.IsFinite(f):
-                result = (int)MathF.Round(f);
+                result = (int)MathF.Round(f, MidpointRounding.AwayFromZero);
                 return true;
             case bool b:
                 result = b ? 1 : 0;

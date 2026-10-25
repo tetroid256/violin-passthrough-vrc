@@ -46,7 +46,7 @@
 
 準備（DESIGN.md §9）:
 1. アバターの Expression Parameters に `HandPassthrough`（Bool）、`HandPassthroughPreset`（Int）、`HandPassthroughDebug`（Bool）を追加する。**3つとも Synced のチェックを外す**。
-2. Expressions Menu に Toggle（HandPassthrough）、Toggle（HandPassthroughDebug）、プリセット用に Sub Menu の Button / Toggle（HandPassthroughPreset を 0 と 1 にする）を追加してアップロードする。
+2. Expressions Menu に Toggle（HandPassthrough）、Toggle（HandPassthroughDebug）を置く。プリセット用には Sub Menu を作り、HandPassthroughPreset の値を 0 にする Toggle と 1 にする Toggle を置く（**Button は使わない**。Button は押している間だけ値が変わり、離すと 0 に戻るため）。アップロードする。
 3. VRChat の Action Menu → Options → OSC → Enabled を ON。アバターを更新したら OSC の **Reset Config** を実行する。
 
 確認すること:
@@ -74,7 +74,9 @@ OSCQuery がうまく動かないとき（フォールバック）:
    - [ ] **SteamVR を終了すると、本アプリも終了する**（タスクマネージャーから ViolinPassthrough が消える。ログに `Received VREvent_Quit.` → `Acknowledged quit.` → `Violin Passthrough exiting.`）。
    - [ ] **SteamVR を起動するだけで、本アプリが立ち上がる**（ログに新しい `starting` の行が出る。VRChat のトグルが効く）。
    - [ ] SteamVR が異常終了したとき（タスクマネージャーで vrserver を終了するなど）も、5 秒以内に本アプリが終了する。
-4. 自動起動をやめたいとき: SteamVR の設定で Violin Passthrough をオフにする（本アプリは再びオンにしない）。登録ごと消すときは SteamVR を起動した状態で `ViolinPassthrough.exe --unregister` を実行する。
+4. 自動起動をやめたいとき: SteamVR の設定で Violin Passthrough をオフにする（本アプリは再びオンにしない）。登録ごと消すときは SteamVR を起動した状態で `ViolinPassthrough.exe --unregister` を実行する（本アプリが起動中でも実行できる。結果はコンソール窓に出る）。
+   - [ ] `--unregister` の後、SteamVR の「起動時のオーバーレイアプリ」から Violin Passthrough が消える。もう一度登録するには、引数なしで一度起動する。
+   - [ ] SteamVR を終了したときに、Windows のイベントビューアー（Windows ログ → Application）に ViolinPassthrough のエラーが出ていない。
 
 ## Phase 5: 拡張（複数領域・Polygon・WorldAnchor・DeviceAnchor）
 
