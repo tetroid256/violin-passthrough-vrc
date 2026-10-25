@@ -48,7 +48,9 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
     private readonly Stopwatch _sinceServerCheck = Stopwatch.StartNew();
     private readonly Stopwatch _sinceSerialRefresh = new();
     private readonly TrackedDevicePose_t[] _poses = new TrackedDevicePose_t[OpenVR.k_unMaxTrackedDeviceCount];
+    private readonly DevicePose[] _devicePoses = new DevicePose[OpenVR.k_unMaxTrackedDeviceCount];
     private IReadOnlyDictionary<string, uint>? _serials;
+    private string? _loggedDevices;
     private bool _initialized;
 
     /// <summary>
@@ -65,6 +67,7 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
             {
                 _initialized = true;
                 Log.Info("OpenVR initialized as an overlay application.");
+                _serials = ReadSerials(OpenVR.System);
                 return true;
             }
 
@@ -116,6 +119,13 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
             }
         }
 
+        if (_serials is null)
+        {
+            // 接続が変わったら一覧を取り直す（トラッカーのシリアル番号を調べられるように、ログにも出す）。
+            _serials = ReadSerials(system);
+            _sinceSerialRefresh.Restart();
+        }
+
         if (_sinceServerCheck.Elapsed >= ServerCheckInterval)
         {
             _sinceServerCheck.Restart();
@@ -144,10 +154,10 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
         }
 
         system.GetDeviceToAbsoluteTrackingPose(ETrackingUniverseOrigin.TrackingUniverseStanding, 0, _poses);
-        var poses = new DevicePose[_poses.Length];
+        // 毎フレーム呼ぶので配列は使い回す（スナップショットは次のフレームまでしか使わない）。
         for (var i = 0; i < _poses.Length; i++)
         {
-            poses[i] = new DevicePose(_poses[i].bDeviceIsConnected, _poses[i].bPoseIsValid, FromHmdMatrix(_poses[i].mDeviceToAbsoluteTracking));
+            _devicePoses[i] = new DevicePose(_poses[i].bDeviceIsConnected, _poses[i].bPoseIsValid, FromHmdMatrix(_poses[i].mDeviceToAbsoluteTracking));
         }
 
         // シリアル番号はデバイスの接続が変わったときと、念のため一定間隔で取り直す。
@@ -159,7 +169,7 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
 
         return new TrackingSnapshot(
             TrackingUniverse.Standing,
-            poses,
+            _devicePoses,
             system.GetTrackedDeviceIndexForControllerRole(ETrackedControllerRole.LeftHand),
             system.GetTrackedDeviceIndexForControllerRole(ETrackedControllerRole.RightHand),
             _serials);
@@ -318,9 +328,10 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
         m.m4, m.m5, m.m6, m.m7,
         m.m8, m.m9, m.m10, m.m11);
 
-    private static Dictionary<string, uint> ReadSerials(CVRSystem system)
+    private Dictionary<string, uint> ReadSerials(CVRSystem system)
     {
         var serials = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
+        var descriptions = new List<string>();
         var buffer = new StringBuilder(256);
         for (uint i = 0; i < OpenVR.k_unMaxTrackedDeviceCount; i++)
         {
@@ -334,11 +345,20 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
             system.GetStringTrackedDeviceProperty(i, ETrackedDeviceProperty.Prop_SerialNumber_String, buffer, (uint)buffer.Capacity, ref error);
             if (error == ETrackedPropertyError.TrackedProp_Success && buffer.Length > 0)
             {
-                serials.TryAdd(buffer.ToString(), i);
+                var serial = buffer.ToString();
+                serials.TryAdd(serial, i);
+                descriptions.Add($"#{i} {system.GetTrackedDeviceClass(i)} \"{serial}\"");
             }
         }
 
-        Log.Debug($"Tracked devices: {string.Join(", ", serials.Select(s => $"{s.Value}={s.Key}"))}");
+        // 一覧が変わったときだけ出す（device アンカーの serial に使う値）。
+        var text = string.Join(", ", descriptions);
+        if (text != _loggedDevices)
+        {
+            Log.Info($"Tracked devices: {(text.Length == 0 ? "none" : text)}");
+            _loggedDevices = text;
+        }
+
         return serials;
     }
 

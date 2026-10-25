@@ -206,6 +206,8 @@ public class ConfigValidatorTests
     [InlineData("{ \"type\": \"polygon\", \"vertices\": [[0, 0], [0.1], [0, 0.1]] }", "vertices[1]")]
     [InlineData("{ \"type\": \"polygon\", \"vertices\": [[0, 0], null, [0, 0.1]] }", "vertices[1]")]
     [InlineData("{ \"type\": \"polygon\", \"vertices\": [[0, 0], [0.1, 0.1], [0.2, 0.2]] }", "enclose an area")]
+    [InlineData("{ \"type\": \"polygon\", \"vertices\": [[0.1, 0.1], [0.1, 0.1], [0.1, 0.1]] }", "enclose an area")]
+    [InlineData("{ \"type\": \"polygon\", \"vertices\": [[0, 0], [0.2, 0.2], [-0.1, -0.1], [0.4, 0.4]] }", "enclose an area")]
     [InlineData("{ \"type\": \"polygon\", \"cornerRadius\": 0.1, \"vertices\": [[0, 0], [0.1, 0], [0, 0.1]] }", "cornerRadius")]
     [InlineData("{ \"type\": \"ellipse\", \"vertices\": [[0, 0], [0.1, 0], [0, 0.1]] }", "vertices is only valid")]
     public void Polygon_InvalidDefinitions(string shape, string expected)
@@ -214,6 +216,62 @@ public class ConfigValidatorTests
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains(expected, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Polygon_SelfIntersectingBowtie_IsAccepted()
+    {
+        // 符号付き面積は 0 になるが、偶奇規則で2つの三角形として描ける。
+        var result = ParseWithFingerboard("{ \"type\": \"hmd\" }", "{ \"type\": \"polygon\", \"vertices\": [[-0.5, -0.5], [0.5, 0.5], [0.5, -0.5], [-0.5, 0.5]] }");
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        var shape = result.Config!.Regions[0].Shape;
+        Assert.True(shape.SignedDistance(0.3 * 0.45, 0) < 0);
+        Assert.True(shape.SignedDistance(0, 0.3 * 0.25) > 0);
+    }
+
+    [Theory]
+    [InlineData(128, true)]
+    [InlineData(129, false)]
+    public void Polygon_VertexCountIsLimited(int count, bool valid)
+    {
+        var points = Enumerable.Range(0, count).Select(i =>
+        {
+            var t = 2 * Math.PI * i / count;
+            return FormattableString.Invariant($"[{0.5 * Math.Cos(t):0.######}, {0.5 * Math.Sin(t):0.######}]");
+        });
+
+        var result = ParseWithFingerboard("{ \"type\": \"hmd\" }", $"{{ \"type\": \"polygon\", \"vertices\": [{string.Join(", ", points)}] }}");
+
+        Assert.Equal(valid, result.Success);
+        if (!valid)
+        {
+            Assert.Contains(result.Errors, e => e.Contains("at most 128"));
+        }
+    }
+
+    [Fact]
+    public void DeviceSerial_IsTrimmed()
+    {
+        var result = ParseWithFingerboard("{ \"type\": \"device\", \"serial\": \"  LHR-1 \" }", "{ \"type\": \"ellipse\" }");
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Equal(new DeviceAnchorSpec(null, "LHR-1", LostBehavior.Hold), result.Config!.Regions[0].Anchor);
+    }
+
+    [Fact]
+    public void ParsingTheSameConfigTwice_GivesEqualRegions()
+    {
+        // 設定を保存し直しても、変わっていない領域は描き直さない（MaskOverlay.Apply が同値判定で何もしない）。
+        const string anchor = "{ \"type\": \"device\", \"role\": \"leftHand\", \"onLost\": \"hide\" }";
+        const string shape = "{ \"type\": \"polygon\", \"vertices\": [[-0.5, -0.5], [0.5, -0.2], [0.3, 0.5]] }";
+
+        var a = ParseWithFingerboard(anchor, shape).Config!;
+        var b = ParseWithFingerboard(anchor, shape).Config!;
+
+        Assert.Equal(a.Regions, b.Regions);
+        Assert.Equal(a.Regions[0].GetHashCode(), b.Regions[0].GetHashCode());
+        Assert.Equal(a.Render, b.Render);
     }
 
     [Theory]

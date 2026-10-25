@@ -19,6 +19,9 @@ public static partial class ConfigValidator
     public const double MaxSizeMeters = 10.0;
     public const double MaxMarginMeters = 1.0;
 
+    /// <summary>多角形の頂点数の上限。ラスタライズの時間は頂点数に比例し、メインループで行うため。</summary>
+    public const int MaxPolygonVertices = 128;
+
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -281,7 +284,8 @@ public static partial class ConfigValidator
                         break;
                 }
 
-                if (anchor.Serial is not null && string.IsNullOrWhiteSpace(anchor.Serial))
+                var serial = anchor.Serial?.Trim();
+                if (serial is not null && serial.Length == 0)
                 {
                     errors.Add($"{label}: anchor.serial must not be empty.");
                 }
@@ -305,7 +309,7 @@ public static partial class ConfigValidator
                         break;
                 }
 
-                return errors.Count == before ? new DeviceAnchorSpec(role, anchor.Serial, onLost) : null;
+                return errors.Count == before ? new DeviceAnchorSpec(role, serial, onLost) : null;
             }
 
             default:
@@ -362,6 +366,12 @@ public static partial class ConfigValidator
             return null;
         }
 
+        if (vertices.Length > MaxPolygonVertices)
+        {
+            errors.Add($"{label}: shape.vertices must have at most {MaxPolygonVertices} points (got {vertices.Length}).");
+            return null;
+        }
+
         var points = new List<(double X, double Y)>(vertices.Length);
         for (var i = 0; i < vertices.Length; i++)
         {
@@ -376,16 +386,15 @@ public static partial class ConfigValidator
             points.Add((v[0] * width, v[1] * height));
         }
 
-        // 面積が無い（一直線に並んでいる）多角形は何も描けない。
-        var area = 0.0;
-        for (int i = 0, j = points.Count - 1; i < points.Count; j = i++)
+        // すべての点が一直線上にある多角形は何も描けない。
+        // 符号付き面積は自己交差（8 の字など）で打ち消し合って 0 になるので使わず、
+        // 最初の点から最も遠い点を通る直線から、他の点がどれだけ離れているかで判断する。
+        var (x0, y0) = points[0];
+        var far = points.MaxBy(p => (p.X - x0) * (p.X - x0) + (p.Y - y0) * (p.Y - y0));
+        var spread = points.Max(p => Math.Abs((far.X - x0) * (p.Y - y0) - (far.Y - y0) * (p.X - x0)));
+        if (spread < 1e-6 * width * height)
         {
-            area += points[j].X * points[i].Y - points[i].X * points[j].Y;
-        }
-
-        if (Math.Abs(area) / 2 < 1e-6 * width * height)
-        {
-            errors.Add($"{label}: shape.vertices must enclose an area.");
+            errors.Add($"{label}: shape.vertices must enclose an area (the points are on one line).");
             return null;
         }
 

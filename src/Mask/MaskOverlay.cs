@@ -37,6 +37,7 @@ public sealed class MaskOverlay : IMaskOverlay
     private AnchorSpec? _anchorSpec;
     private IAnchor? _anchor;
     private AnchorPlacement? _appliedPlacement;
+    private TrackingSnapshot? _lastTracking;
     private long? _placementFailedAt;
     private bool _textureReady;
     private bool _wantVisible;
@@ -90,11 +91,12 @@ public sealed class MaskOverlay : IMaskOverlay
         _applied = ok ? (region, settings) : null;
 
         // 姿勢やアンカーが変わったかもしれないので、置き場所を必ず設定し直す。
+        // トラッキング依存のアンカーは直前のフレームの情報で置く（次の Tick まで消えて見えないように）。
         _appliedPlacement = null;
         _placementFailedAt = null;
-        if (!_anchor.RequiresTracking)
+        if (!_anchor.RequiresTracking || _lastTracking is not null)
         {
-            ApplyPlacement(_anchor.Resolve(region.LocalPose, null));
+            ApplyPlacement(_anchor.Resolve(region.LocalPose, _lastTracking));
         }
 
         UpdateVisibility();
@@ -114,6 +116,7 @@ public sealed class MaskOverlay : IMaskOverlay
             return;
         }
 
+        _lastTracking = tracking;
         ApplyPlacement(_anchor.Resolve(_region.LocalPose, tracking));
         UpdateVisibility();
     }

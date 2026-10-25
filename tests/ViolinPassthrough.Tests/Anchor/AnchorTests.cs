@@ -120,6 +120,16 @@ public class AnchorTests
     }
 
     [Fact]
+    public void OnlyDeviceAnchors_RequireTracking()
+    {
+        // MaskOverlay.RequiresTracking は、設定から作ったアンカーのこの値をそのまま返す。
+        Assert.False(new HmdAnchorSpec().CreateAnchor().RequiresTracking);
+        Assert.False(new WorldAnchorSpec(TrackingUniverse.Standing).CreateAnchor().RequiresTracking);
+        Assert.True(new DeviceAnchorSpec(DeviceRole.LeftHand, null, LostBehavior.Hold).CreateAnchor().RequiresTracking);
+        Assert.True(new DeviceAnchorSpec(null, "x", LostBehavior.Hide).CreateAnchor().RequiresTracking);
+    }
+
+    [Fact]
     public void HmdMatrix_RoundTrips()
     {
         var pose = Pose3x4.FromPositionEuler(new Vec3(0.1, -0.2, 0.3), new Vec3(10, 20, 30));

@@ -74,13 +74,13 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `{ "type": "hmd" }` | HMD 基準（既定）。頭に固定 |
 | `{ "type": "world", "universe": "standing" }` | ルーム空間に固定。`position` / `rotationEulerDeg` はプレイエリアの座標（standing は床の中心が原点、seated は着座位置が原点） |
 | `{ "type": "device", "role": "leftHand", "onLost": "hold" }` | 手に追従。`role` は `leftHand` / `rightHand`。ハンドトラッキングでは VD がエミュレートするコントローラーの姿勢になる |
-| `{ "type": "device", "serial": "LHR-XXXXXXXX", "onLost": "hide" }` | トラッカーなどにシリアル番号で追従。シリアル番号は `logLevel: "Debug"` にするとログの `Tracked devices:` に出る |
+| `{ "type": "device", "serial": "LHR-XXXXXXXX", "onLost": "hide" }` | トラッカーなどにシリアル番号で追従。シリアル番号は起動時（とデバイスの接続が変わったとき）のログの `Tracked devices:` に出る |
 
 `onLost`: デバイスを見失ったとき `hold`（既定。最後に見えていた場所に置いておく）/ `hide`（隠す）。一度も見えていないときは、どちらでも隠す。
 
 ### 多角形
 
-`vertices` は板の幅・高さに対する割合で書く。中心が `[0, 0]`、左下が `[-0.5, -0.5]`、右上が `[0.5, 0.5]`（+x 右、+y 上）。3 点以上。余白（`marginMeters`）は多角形の外側に一定の幅で足す（角は丸くなる）。
+`vertices` は板の幅・高さに対する割合で書く。中心が `[0, 0]`、左下が `[-0.5, -0.5]`、右上が `[0.5, 0.5]`（+x 右、+y 上）。3〜128 点。自己交差する形（8 の字など）は偶奇規則で塗る。余白（`marginMeters`）は多角形の外側に一定の幅で足す（角は丸くなる）。
 例: 左下から右上へ斜めに長い形 `[[-0.5, -0.5], [-0.2, -0.5], [0.5, 0.3], [0.5, 0.5], [0.2, 0.5], [-0.5, -0.3]]`
 
 ## OSC（VRChat のアバターメニューで切り替え）

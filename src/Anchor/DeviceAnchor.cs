@@ -1,3 +1,5 @@
+using ViolinPassthrough.Logging;
+
 namespace ViolinPassthrough.Anchor;
 
 /// <summary>手のロール。</summary>
@@ -26,6 +28,7 @@ public sealed class DeviceAnchor : IAnchor
 {
     private Pose3x4? _lastDevicePose;
     private TrackingUniverse _lastUniverse;
+    private bool _serialMissingLogged;
 
     public DeviceAnchor(DeviceRole? role, string? serial, LostBehavior onLost)
     {
@@ -74,7 +77,25 @@ public sealed class DeviceAnchor : IAnchor
     {
         if (Serial is not null)
         {
-            return tracking.SerialToIndex.TryGetValue(Serial, out var index) ? index : TrackingSnapshot.InvalidDeviceIndex;
+            if (tracking.SerialToIndex.TryGetValue(Serial, out var index))
+            {
+                if (_serialMissingLogged)
+                {
+                    Log.Info($"Device with serial \"{Serial}\" found.");
+                    _serialMissingLogged = false;
+                }
+
+                return index;
+            }
+
+            if (!_serialMissingLogged)
+            {
+                // 打ち間違いに気づけるように、一度だけ知らせる。接続中のデバイスの一覧は起動時のログにある。
+                Log.Warn($"No connected device has serial \"{Serial}\" (yet). Connected: {string.Join(", ", tracking.SerialToIndex.Keys)}.");
+                _serialMissingLogged = true;
+            }
+
+            return TrackingSnapshot.InvalidDeviceIndex;
         }
 
         return Role == DeviceRole.LeftHand ? tracking.LeftHandIndex : tracking.RightHandIndex;
