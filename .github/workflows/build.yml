@@ -1,0 +1,37 @@
+name: build
+
+# public リポジトリの標準ランナーなので無料。重複実行を避けるため push と手動実行のみ。
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Test
+        run: dotnet test ViolinPassthrough.sln -c Release
+
+      - name: Publish (win-x64, self-contained)
+        run: dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contained -o publish
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ViolinPassthrough-win-x64
+          path: publish/
+          if-no-files-found: error
+          retention-days: 14

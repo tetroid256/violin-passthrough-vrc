@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>ViolinPassthrough</AssemblyName>
+    <RootNamespace>ViolinPassthrough</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ViolinPassthrough.Tests" />
+  </ItemGroup>
+
+  <!-- OpenVR 公式バインディング（third_party/openvr、バージョンは README を参照） -->
+  <ItemGroup>
+    <Compile Include="../third_party/openvr/openvr_api.cs" Link="OpenVR/openvr_api.cs" />
+    <None Include="../third_party/openvr/win64/openvr_api.dll" Link="openvr_api.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

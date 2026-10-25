@@ -1,0 +1,21 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{cs,csproj,props,targets,json,yml,yaml,vrmanifest}]
+indent_style = space
+
+[*.cs]
+indent_size = 4
+
+[*.{csproj,props,targets,json,yml,yaml,vrmanifest}]
+indent_size = 2
+
+# Valve の自動生成バインディング。手を入れず、警告と nullable 解析の対象から外す。
+[third_party/**.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none

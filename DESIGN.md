@@ -351,3 +351,11 @@ OpenVR の HMD 座標系に従う。単位はメートル。+X が右、+Y が�
 - キー色の最終決定（実機で VRChat のワールドを見ながら決める）
 - `edgeMode` の既定値（hard と aa を実機で比較して決める）
 - 初期配置の数値（実機でデバッグ表示を使って調整する）
+
+### 実装時の判断（設計からの変更・補足）
+- **ランタイムを .NET 10 に変更**: .NET 8 のサポートは 2026-11-10 に終了するため、現行 LTS の .NET 10 を使う（ユーザー確認済み）。
+- **回転の規約**: `rotationEulerDeg` は `[pitch, yaw, roll]`（度）。右手系で pitch = X 軸、yaw = Y 軸、roll = Z 軸まわり。適用順は roll → pitch → yaw（R = Ry·Rx·Rz）。この規約では yaw 正で板が右を向き（左にある板が視点の方を向く）、pitch 正で板の上端が手前に倒れる（板が下を向く）。初期値は設計どおり `[15, 20, -15]` のままにしてあり、実機で向きが逆なら pitch の符号を反転する。
+- **余白と板の大きさ**: `SetOverlayWidthInMeters` には `widthMeters + 2 × marginMeters` を渡す。板（テクスチャ全面）の大きさは余白込みで `(width + 2m) × (height + 2m)`、形状は余白の分だけ外に広げてから描く。画素数の丸めで縦横比がずれないように `SetOverlayTexelAspect` で補正する。
+- **縁の aa の幅**: `edgeMode: aa` は符号付き距離で約 1.5px かけて α を落とす。
+- **SteamVR の起動待ち**: `VRApplication_Background` で接続を試し（SteamVR が起動していなければ起動させずに失敗する）、成功したら `VRApplication_Overlay` で初期化し直す。失敗したら 3 秒ごとに再試行する。
+- **Phase 1〜3 はコンソールアプリ**: ログを見やすくするため。Phase 4 で WinExe とファイルログに切り替える。
