@@ -38,3 +38,35 @@ public sealed record EllipseShape(double HalfWidth, double HalfHeight) : MaskSha
 
     private static double Square(double v) => v * v;
 }
+
+/// <summary>角丸の長方形。角の半径は短辺の半分までに切り詰める。</summary>
+public sealed record RoundedRectShape : MaskShape
+{
+    public RoundedRectShape(double halfWidth, double halfHeight, double cornerRadius)
+    {
+        HalfWidth = halfWidth;
+        HalfHeight = halfHeight;
+        CornerRadius = Math.Clamp(cornerRadius, 0, Math.Min(halfWidth, halfHeight));
+    }
+
+    public double HalfWidth { get; }
+
+    public double HalfHeight { get; }
+
+    public double CornerRadius { get; }
+
+    public override double SignedDistance(double x, double y)
+    {
+        var qx = Math.Abs(x) - (HalfWidth - CornerRadius);
+        var qy = Math.Abs(y) - (HalfHeight - CornerRadius);
+        var outside = Math.Sqrt(Square(Math.Max(qx, 0)) + Square(Math.Max(qy, 0)));
+        var inside = Math.Min(Math.Max(qx, qy), 0);
+        return outside + inside - CornerRadius;
+    }
+
+    // 距離関数をそのまま余白分ずらすのと同じ（角の半径も余白分大きくなる）。
+    public override MaskShape Inflate(double margin) =>
+        new RoundedRectShape(HalfWidth + margin, HalfHeight + margin, CornerRadius + margin);
+
+    private static double Square(double v) => v * v;
+}

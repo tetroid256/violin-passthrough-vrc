@@ -16,11 +16,18 @@ public enum AppEvents
     DevicesChanged = 1 << 1,
 }
 
+/// <summary>メインループから見た OpenVR ランタイム。テストでは偽物に差し替える。</summary>
+public interface IAppLifecycle
+{
+    /// <summary>溜まっている VREvent をすべて処理する。</summary>
+    AppEvents PollEvents();
+}
+
 /// <summary>
 /// OpenVR の初期化、VREvent の処理、終了処理。
 /// OpenVR を呼ぶのは、このクラスと MaskOverlay だけにする。
 /// </summary>
-public sealed class AppLifecycle : IDisposable
+public sealed class AppLifecycle : IAppLifecycle, IDisposable
 {
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(3);
     private static readonly uint EventSize = (uint)Marshal.SizeOf<VREvent_t>();
@@ -63,7 +70,6 @@ public sealed class AppLifecycle : IDisposable
         return false;
     }
 
-    /// <summary>溜まっている VREvent をすべて処理する。</summary>
     public AppEvents PollEvents()
     {
         var system = OpenVR.System;

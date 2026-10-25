@@ -16,6 +16,12 @@
     <InternalsVisibleTo Include="ViolinPassthrough.Tests" />
   </ItemGroup>
 
+  <!-- 既定の設定。初回起動時に %APPDATA% へコピーする元として埋め込み、参照用に出力先にも置く。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="../resources/config.default.json" LogicalName="ViolinPassthrough.config.default.json" />
+    <None Include="../resources/config.default.json" Link="config.default.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- OpenVR 公式バインディング（third_party/openvr、バージョンは README を参照） -->
   <ItemGroup>
     <Compile Include="../third_party/openvr/openvr_api.cs" Link="OpenVR/openvr_api.cs" />

@@ -1,0 +1,47 @@
+{
+  "keyColor": { "r": 255, "g": 0, "b": 255 },
+  "edgeMode": "hard",
+  "textureLongSide": 512,
+  "sortOrder": 100,
+  "startEnabled": false,
+  "debugVisible": false,
+  "activePreset": "fingerboard",
+  "presets": {
+    "fingerboard": ["fingerboard"],
+    "whole": ["fingerboard", "body"]
+  },
+  "regions": [
+    {
+      "id": "fingerboard",
+      "anchor": { "type": "hmd" },
+      "shape": { "type": "ellipse" },
+      "position": [-0.15, -0.15, -0.40],
+      "rotationEulerDeg": [15, 20, -15],
+      "widthMeters": 0.45,
+      "heightMeters": 0.25,
+      "marginMeters": 0.03
+    },
+    {
+      "id": "body",
+      "anchor": { "type": "hmd" },
+      "shape": { "type": "roundedRect", "cornerRadius": 0.05 },
+      "position": [-0.05, -0.22, -0.30],
+      "rotationEulerDeg": [30, 10, -15],
+      "widthMeters": 0.30,
+      "heightMeters": 0.20,
+      "marginMeters": 0.03
+    }
+  ],
+  "osc": {
+    "useOscQuery": true,
+    "fallbackListenPort": 9011,
+    "vrchatSendHost": "127.0.0.1",
+    "vrchatSendPort": 9000,
+    "parameters": {
+      "enabled": "HandPassthrough",
+      "preset": "HandPassthroughPreset",
+      "debug": "HandPassthroughDebug"
+    }
+  },
+  "logLevel": "Info"
+}

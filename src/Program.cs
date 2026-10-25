@@ -1,5 +1,5 @@
-using ViolinPassthrough.Anchor;
 using ViolinPassthrough.App;
+using ViolinPassthrough.Config;
 using ViolinPassthrough.Logging;
 using ViolinPassthrough.Mask;
 
@@ -19,44 +19,26 @@ internal static class Program
             cts.Cancel();
         };
 
+        using var configStore = new ConfigStore(ConfigStore.DefaultPath);
+        configStore.Initialize();
+        configStore.StartWatching();
+
         using var lifecycle = new AppLifecycle();
         if (!lifecycle.WaitForRuntimeAndInit(cts.Token))
         {
             return 0;
         }
 
-        // Phase 1: 設定はハードコード。
-        var region = new MaskRegion(
-            Id: "fingerboard",
-            Anchor: new HmdAnchorSpec(),
-            Shape: new EllipseShape(0.45 / 2, 0.25 / 2),
-            Position: new Vec3(-0.15, -0.15, -0.40),
-            RotationEulerDeg: new Vec3(15, 20, -15),
-            WidthMeters: 0.45,
-            HeightMeters: 0.25,
-            MarginMeters: 0.03);
-        var settings = new RenderSettings(
-            KeyColor: new Rgb(255, 0, 255),
-            EdgeMode: EdgeMode.Hard,
-            TextureLongSide: 512,
-            SortOrder: 100,
-            Debug: false);
+        var state = MainLoop.CreateInitialState(configStore.Current);
+        Log.Info($"Initial state: {state}.");
 
-        var overlay = new MaskOverlay(region.Id);
-        try
+        using (var overlays = new MaskOverlaySet(id => new MaskOverlay(id)))
         {
-            overlay.Apply(region, settings);
-            overlay.SetVisible(true);
-
-            var quitRequested = new MainLoop(lifecycle, new[] { overlay }).Run(cts.Token);
-            if (quitRequested)
+            var loop = new MainLoop(lifecycle, configStore, state, overlays);
+            if (loop.Run(cts.Token))
             {
                 lifecycle.AcknowledgeQuit();
             }
-        }
-        finally
-        {
-            overlay.Dispose();
         }
 
         Log.Info("Violin Passthrough exiting.");
