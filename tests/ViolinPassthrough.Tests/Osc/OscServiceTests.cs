@@ -69,10 +69,19 @@ public class OscServiceTests
     {
         // OSCQuery（mDNS / HTTP）が使えない環境でも、例外を出さずにフォールバックして受信できること。
         var settings = TestConfigs.Default.Osc with { FallbackListenPort = FreeUdpPort() };
+        var log = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        ViolinPassthrough.Logging.Log.AddSink(log.Enqueue);
 
         using var service = OscService.Start(settings);
 
         Assert.NotNull(service.ListenPort);
+        if (OperatingSystem.IsWindows())
+        {
+            // Windows（実機と同じ環境）では OSCQuery で起動できること。
+            Assert.True(service.UsingOscQuery, "OSCQuery did not start on Windows:\n" + string.Join("\n", log.Where(l => l.Contains("OSC"))));
+            Assert.NotEqual(settings.FallbackListenPort, service.ListenPort);
+        }
+
         using var sender = new UdpClient();
         var bytes = OscCodec.Encode(new OscMessage("/avatar/change", "avtr_x"));
         sender.Send(bytes, bytes.Length, new IPEndPoint(IPAddress.Loopback, service.ListenPort!.Value));

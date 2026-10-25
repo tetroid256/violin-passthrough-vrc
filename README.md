@@ -109,8 +109,20 @@ Bool のパラメータを Int / Float で作ってしまっても受け取れ�
 ## 構成
 
 ```
-src/            本体（DESIGN.md の「モジュール構成」に対応）
-tests/          単体テスト（xUnit）
-resources/      マニフェストと既定の設定
-third_party/    OpenVR の公式バインディング
+src/
+  Program.cs              エントリポイント（コマンドライン、多重起動防止、ログ、組み立て）
+  App/AppLifecycle.cs     OpenVR の初期化・イベント・終了・マニフェスト登録・トラッキング情報
+  App/MainLoop.cs         約 30Hz の更新ループ（設定・OSC・状態をオーバーレイに反映）
+  Config/                 設定のデータモデル・検証・ホットリロード
+  Mask/                   形状・ラスタライズ・オーバーレイ（1領域 = 1 OpenVR Overlay）
+  Anchor/                 HMD / World / Device アンカーと姿勢の計算
+  Osc/                    OSC のエンコード/デコード、OSCQuery、パラメータの対応付け
+  State/                  現在の状態（有効/無効、プリセット、デバッグ表示）
+  Logging/                ログ（コンソール、日付ごとのファイル）
+tests/                    単体テスト（xUnit）
+resources/                manifest.vrmanifest と config.default.json
+third_party/openvr/       OpenVR の公式バインディング
+docs/VERIFICATION.md      実機での確認手順
 ```
+
+OpenVR の API を呼ぶのは `AppLifecycle` と `MaskOverlay` だけ（DESIGN.md §4, §14）。それ以外はテストで偽物に差し替えて確認している。
