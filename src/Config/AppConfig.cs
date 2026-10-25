@@ -35,6 +35,15 @@ public sealed class AppConfig
 
     public OscConfig Osc { get; set; } = new();
 
+    /// <summary>構えたときだけ表示する自動モード（DESIGN.md §15.3）。</summary>
+    public AutoConfig Auto { get; set; } = new();
+
+    /// <summary>手の位置からのキャリブレーション（DESIGN.md §15.2）。</summary>
+    public CalibrationConfig Calibration { get; set; } = new();
+
+    /// <summary>VR 内の通知表示（DESIGN.md §15.4）。</summary>
+    public FeedbackConfig Feedback { get; set; } = new();
+
     /// <summary>"Debug" / "Info" / "Warning" / "Error"。</summary>
     public string LogLevel { get; set; } = "Info";
 }
@@ -119,6 +128,62 @@ public sealed class OscParametersConfig
     public string Preset { get; set; } = "HandPassthroughPreset";
 
     public string Debug { get; set; } = "HandPassthroughDebug";
+
+    public string Auto { get; set; } = "HandPassthroughAuto";
+
+    public string Calibrate { get; set; } = "HandPassthroughCalibrate";
+}
+
+public sealed class AutoConfig
+{
+    /// <summary>起動時に自動モードにするか。値が変わったときに状態へ反映する。</summary>
+    public bool Enabled { get; set; }
+
+    public bool UseLeftHand { get; set; } = true;
+
+    public bool UseHeadTilt { get; set; }
+
+    /// <summary>HMD から見た、構えたときの左手の位置（キャリブレーションで書き込む）。</summary>
+    public double[]? LeftHandPosition { get; set; } = { -0.35, -0.10, -0.35 };
+
+    /// <summary>HMD から見た、構えたときの「上」の向き（キャリブレーションで書き込む）。</summary>
+    public double[]? HeadUp { get; set; }
+
+    public double RadiusMeters { get; set; } = 0.15;
+
+    public double HeadTiltToleranceDeg { get; set; } = 15;
+
+    public double EnterDelaySeconds { get; set; } = 0.3;
+
+    public double ExitDelaySeconds { get; set; } = 2.0;
+}
+
+public sealed class CalibrationConfig
+{
+    /// <summary>置き直す領域（HMD 基準のもの）。</summary>
+    public string RegionId { get; set; } = "fingerboard";
+
+    public int CountdownSeconds { get; set; } = 5;
+
+    /// <summary>両手の外側に足す余裕（片側、メートル）。</summary>
+    public double PadMeters { get; set; } = 0.05;
+
+    /// <summary>キャリブレーションの後にデバッグ表示で結果を見せる時間。</summary>
+    public double PreviewSeconds { get; set; } = 5;
+
+    public bool Beep { get; set; } = true;
+}
+
+public sealed class FeedbackConfig
+{
+    /// <summary>カウントダウンと結果以外の通知（自動モードの切り替えなど）も出すか。</summary>
+    public bool Toasts { get; set; } = true;
+
+    /// <summary>通知表示の板の中心（HMD 基準、メートル）。</summary>
+    public double[]? Position { get; set; } = { 0, 0.08, -0.5 };
+
+    /// <summary>文字の高さ（メートル）。</summary>
+    public double TextHeightMeters { get; set; } = 0.025;
 }
 
 /// <summary>

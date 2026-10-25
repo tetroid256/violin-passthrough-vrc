@@ -6,11 +6,12 @@ namespace ViolinPassthrough.State;
 /// </summary>
 public sealed class PassthroughState
 {
-    public PassthroughState(bool enabled, string activePreset, bool debug)
+    public PassthroughState(bool enabled, string activePreset, bool debug, bool auto = false)
     {
         Enabled = enabled;
         ActivePreset = activePreset;
         Debug = debug;
+        Auto = auto;
     }
 
     public bool Enabled { get; private set; }
@@ -19,13 +20,20 @@ public sealed class PassthroughState
 
     public bool Debug { get; private set; }
 
+    /// <summary>自動モード（構えたときだけ表示する）。</summary>
+    public bool Auto { get; private set; }
+
+    /// <summary>楽器を構えているか（自動モードの判定結果）。</summary>
+    public bool InPosture { get; private set; }
+
     /// <summary>変更のたびに増える。反映済みかどうかの判定に使う。</summary>
     public int Version { get; private set; }
 
     /// <summary>
-    /// マスクを表示するか。デバッグ表示中は、位置を確認できるように無効でも表示する。
+    /// マスクを表示するか。有効でも、自動モードなら構えているときだけ表示する。
+    /// デバッグ表示中は、位置を確認できるように無効でも表示する。
     /// </summary>
-    public bool IsVisible => Enabled || Debug;
+    public bool IsVisible => (Enabled && (!Auto || InPosture)) || Debug;
 
     public bool SetEnabled(bool enabled)
     {
@@ -63,5 +71,30 @@ public sealed class PassthroughState
         return true;
     }
 
-    public override string ToString() => $"enabled={Enabled}, preset={ActivePreset}, debug={Debug}";
+    public bool SetAuto(bool auto)
+    {
+        if (Auto == auto)
+        {
+            return false;
+        }
+
+        Auto = auto;
+        Version++;
+        return true;
+    }
+
+    public bool SetInPosture(bool inPosture)
+    {
+        if (InPosture == inPosture)
+        {
+            return false;
+        }
+
+        InPosture = inPosture;
+        Version++;
+        return true;
+    }
+
+    public override string ToString() =>
+        $"enabled={Enabled}, preset={ActivePreset}, debug={Debug}, auto={Auto}, inPosture={InPosture}";
 }

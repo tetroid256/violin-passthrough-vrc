@@ -83,6 +83,44 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 `vertices` は板の幅・高さに対する割合で書く。中心が `[0, 0]`、左下が `[-0.5, -0.5]`、右上が `[0.5, 0.5]`（+x 右、+y 上）。3〜128 点。自己交差する形（8 の字など）は偶奇規則で塗る。余白（`marginMeters`）は多角形の外側に一定の幅で足す（角は丸くなる）。
 例: 左下から右上へ斜めに長い形 `[[-0.5, -0.5], [-0.2, -0.5], [0.5, 0.3], [0.5, 0.5], [0.2, 0.5], [-0.5, -0.3]]`
 
+## 演奏のための機能（Phase 6）
+
+楽器と弓で両手がふさがっていても使えるようにする機能。詳しくは DESIGN.md §15。
+
+### キャリブレーション（構えて窓を合わせる）
+1. アバターメニューの **HandPassthroughCalibrate** を ON にする。ビープ音と視界の文字（`CALIBRATE 5` … `1`）でカウントダウンが始まる。
+2. その間に演奏の姿勢をとる: **左手は 1st ポジション、右手は弓の元（フロッグ）を駒の近くの弦に置く**。
+3. 0 になった瞬間の両手の位置から、`calibration.regionId`（既定 `fingerboard`）の窓の位置・角度・長さを計算して config.json に書き込む（元の内容は `config.json.bak` に残る。JSON のコメントは消える）。
+4. `CALIBRATED` と出て、5 秒間、新しい窓が赤いデバッグ表示で見える。失敗したら `CAL FAILED: ...` と理由が出て、設定は変わらない。
+5. カウントダウン中にメニューを OFF にすると取り消す。
+
+窓の高さ・形・余白は変えない（必要なら手で直す）。窓を長めにしたいときは `calibration.padMeters`（両端に足す長さ）を増やす。
+
+### 自動モード（構えたときだけ表示）
+アバターメニューの **HandPassthroughAuto** を ON にすると、HandPassthrough が ON でも、**楽器を構えているときだけ** 窓を出す。楽器を下ろして 2 秒たつと消え、構えて 0.3 秒たつと出る。
+- 判定: HMD から見た左手が `auto.leftHandPosition` から `auto.radiusMeters`（0.15 m）以内。キャリブレーションでこの位置も記録される。
+- ハンドトラッキングで左手を見失いやすいときは、`"useHeadTilt": true` にすると頭の傾き（顎当てに顎を乗せた姿勢）でも判定できる（キャリブレーションを一度してから使う。`useLeftHand` と両方 true なら両方を満たすとき）。
+- 姿勢が取れない間は直前の判定を保つ（急に消えない）。
+
+### 視界の通知
+カウントダウンと結果のほか、`AUTO ON` / `AUTO OFF`、`PRESET ...`、自動モード中の `ON - RAISE TO SHOW`、設定ファイルの `CONFIG RELOADED` / `CONFIG ERROR - SEE LOG` を視界の少し上に短く出す。結果以外を出したくなければ `"feedback": { "toasts": false }`。
+
+| 設定 | 既定 | 意味 |
+|---|---|---|
+| `auto.enabled` | false | 起動時に自動モードにするか（保存時に値が変わったら反映） |
+| `auto.useLeftHand` / `auto.useHeadTilt` | true / false | 判定に使う条件 |
+| `auto.leftHandPosition` | [-0.35, -0.10, -0.35] | 構えたときの左手（HMD 基準）。キャリブレーションで書き込む |
+| `auto.headUp` | なし | 構えたときの頭の傾き。キャリブレーションで書き込む |
+| `auto.radiusMeters` / `auto.headTiltToleranceDeg` | 0.15 / 15 | 構えているとみなす範囲 |
+| `auto.enterDelaySeconds` / `auto.exitDelaySeconds` | 0.3 / 2.0 | 表示する・隠すまでの待ち時間 |
+| `calibration.regionId` | fingerboard | 置き直す領域（HMD 基準のもの） |
+| `calibration.countdownSeconds` | 5 | カウントダウンの秒数 |
+| `calibration.padMeters` | 0.05 | 両手の外側に足す長さ（片側） |
+| `calibration.previewSeconds` | 5 | 結果を赤く見せる時間 |
+| `calibration.beep` | true | ビープ音（PC の既定の音声出力。VD 経由でヘッドセットに聞こえる） |
+| `feedback.toasts` | true | 結果以外の通知も出すか |
+| `feedback.position` / `feedback.textHeightMeters` | [0, 0.08, -0.5] / 0.025 | 通知の位置（HMD 基準）と文字の高さ |
+
 ## OSC（VRChat のアバターメニューで切り替え）
 
 | アドレス | 型 | 動作 |
@@ -90,12 +128,14 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `/avatar/parameters/HandPassthrough` | Bool | 有効/無効 |
 | `/avatar/parameters/HandPassthroughPreset` | Int | プリセット番号（`presets` に書いた順。0 = fingerboard, 1 = whole） |
 | `/avatar/parameters/HandPassthroughDebug` | Bool | デバッグ表示 |
+| `/avatar/parameters/HandPassthroughAuto` | Bool | 自動モード（構えたときだけ表示） |
+| `/avatar/parameters/HandPassthroughCalibrate` | Bool | true でキャリブレーションを始める、カウントダウン中に false で取り消す。終わると本アプリが false に戻す |
 | `/avatar/change` | String | アバター変更。状態は維持し、2 秒間は新しいアバターの既定値を無視してから、現在の状態を送り直す |
 
 起動時・OSC 設定の変更時・アバター変更時、それと設定ファイルで状態が変わったときに、現在の状態を VRChat（既定 127.0.0.1:9000）に送ってメニューの表示を合わせる。
 Bool のパラメータを Int / Float で作ってしまっても受け取れる（Int は 0 以外、Float は 0.5 以上を true とみなす）。
 
-アバター側の設定は DESIGN.md §9 を参照（3つのパラメータを **Synced を外して** Expression Parameters に追加し、メニューに Toggle を置く。アニメーターの変更は不要）。
+アバター側の設定は DESIGN.md §9 と §15.5 を参照（5つのパラメータを **Synced を外して** Expression Parameters に追加し、メニューに Toggle を置く。アニメーターの変更は不要）。
 
 ## 依存ライブラリ
 
@@ -117,7 +157,10 @@ src/
   Mask/                   形状・ラスタライズ・オーバーレイ（1領域 = 1 OpenVR Overlay）
   Anchor/                 HMD / World / Device アンカーと姿勢の計算
   Osc/                    OSC のエンコード/デコード、OSCQuery、パラメータの対応付け
-  State/                  現在の状態（有効/無効、プリセット、デバッグ表示）
+  State/                  現在の状態（有効/無効、プリセット、デバッグ表示、自動モード）
+  Calibration/            手の位置からのキャリブレーション（計算とカウントダウン）
+  Auto/                   構えているかの判定
+  Feedback/               視界の通知（5×7 ドットのフォント）とビープ音
   Logging/                ログ（コンソール、日付ごとのファイル）
 tests/                    単体テスト（xUnit）
 resources/                manifest.vrmanifest と config.default.json

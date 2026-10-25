@@ -15,10 +15,16 @@ public enum OscApplyResult
 
     /// <summary>アバターが変わった（状態は変えない）。</summary>
     AvatarChanged,
+
+    /// <summary>キャリブレーションを始める（Calibrate が true になった）。</summary>
+    CalibrationRequested,
+
+    /// <summary>キャリブレーションを取り消す（Calibrate が false になった）。</summary>
+    CalibrationCancelled,
 }
 
 /// <summary>VRChat 側が今持っているはずの値。送り返すかどうかの判定に使う。</summary>
-public sealed record AvatarParameterValues(bool? Enabled, int? PresetIndex, bool? Debug)
+public sealed record AvatarParameterValues(bool? Enabled, int? PresetIndex, bool? Debug, bool? Auto = null, bool? Calibrate = null)
 {
     public static AvatarParameterValues Unknown { get; } = new(null, null, null);
 }
@@ -36,6 +42,8 @@ public sealed class OscBindings
         EnabledAddress = ParameterPrefix + settings.EnabledParameter;
         PresetAddress = ParameterPrefix + settings.PresetParameter;
         DebugAddress = ParameterPrefix + settings.DebugParameter;
+        AutoAddress = ParameterPrefix + settings.AutoParameter;
+        CalibrateAddress = ParameterPrefix + settings.CalibrateParameter;
     }
 
     public string EnabledAddress { get; }
@@ -44,9 +52,16 @@ public sealed class OscBindings
 
     public string DebugAddress { get; }
 
+    public string AutoAddress { get; }
+
+    public string CalibrateAddress { get; }
+
     /// <summary>受け取るアドレス。これ以外は受信時に捨てる。</summary>
     public IReadOnlySet<string> ReceiveAddresses =>
-        new HashSet<string>(StringComparer.Ordinal) { EnabledAddress, PresetAddress, DebugAddress, AvatarChangeAddress };
+        new HashSet<string>(StringComparer.Ordinal)
+        {
+            EnabledAddress, PresetAddress, DebugAddress, AutoAddress, CalibrateAddress, AvatarChangeAddress,
+        };
 
     /// <summary>
     /// 受け取ったメッセージを状態に反映する。
@@ -129,13 +144,43 @@ public sealed class OscBindings
             return OscApplyResult.StateChanged;
         }
 
+        if (message.Address == AutoAddress)
+        {
+            if (!TryGetBool(argument, out var auto))
+            {
+                return Unsupported(message);
+            }
+
+            vrchat = vrchat with { Auto = auto };
+            if (!state.SetAuto(auto))
+            {
+                return OscApplyResult.None;
+            }
+
+            Log.Info($"Auto mode {(auto ? "on" : "off")} (OSC).");
+            return OscApplyResult.StateChanged;
+        }
+
+        if (message.Address == CalibrateAddress)
+        {
+            if (!TryGetBool(argument, out var calibrate))
+            {
+                return Unsupported(message);
+            }
+
+            // 始める・取り消すかはメインループが今の状態を見て決める。
+            vrchat = vrchat with { Calibrate = calibrate };
+            return calibrate ? OscApplyResult.CalibrationRequested : OscApplyResult.CalibrationCancelled;
+        }
+
         return OscApplyResult.None;
     }
 
     /// <summary>
     /// 状態のうち、VRChat 側の値と違うものを送るメッセージにする。
     /// </summary>
-    public List<OscMessage> BuildSyncMessages(PassthroughState state, ResolvedConfig config, AvatarParameterValues vrchat)
+    /// <param name="calibrating">キャリブレーション中か（Calibrate パラメータの値として送る）。</param>
+    public List<OscMessage> BuildSyncMessages(PassthroughState state, ResolvedConfig config, AvatarParameterValues vrchat, bool calibrating = false)
     {
         var messages = new List<OscMessage>();
         if (vrchat.Enabled != state.Enabled)
@@ -154,14 +199,24 @@ public sealed class OscBindings
             messages.Add(new OscMessage(DebugAddress, state.Debug));
         }
 
+        if (vrchat.Auto != state.Auto)
+        {
+            messages.Add(new OscMessage(AutoAddress, state.Auto));
+        }
+
+        if (vrchat.Calibrate != calibrating)
+        {
+            messages.Add(new OscMessage(CalibrateAddress, calibrating));
+        }
+
         return messages;
     }
 
     /// <summary>送ったあとの VRChat 側の値。</summary>
-    public static AvatarParameterValues ValuesOf(PassthroughState state, ResolvedConfig config)
+    public static AvatarParameterValues ValuesOf(PassthroughState state, ResolvedConfig config, bool calibrating = false)
     {
         var index = config.IndexOfPreset(state.ActivePreset);
-        return new AvatarParameterValues(state.Enabled, index >= 0 ? index : null, state.Debug);
+        return new AvatarParameterValues(state.Enabled, index >= 0 ? index : null, state.Debug, state.Auto, calibrating);
     }
 
     private static OscApplyResult Unsupported(OscMessage message)

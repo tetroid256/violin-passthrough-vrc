@@ -230,6 +230,18 @@ public class MainLoopOscTests
     private const string Enabled = "/avatar/parameters/HandPassthrough";
     private const string Preset = "/avatar/parameters/HandPassthroughPreset";
     private const string Debug = "/avatar/parameters/HandPassthroughDebug";
+    private const string Auto = "/avatar/parameters/HandPassthroughAuto";
+    private const string Calibrate = "/avatar/parameters/HandPassthroughCalibrate";
+
+    private static readonly string[] AllOff =
+    {
+        $"{Enabled} False", $"{Preset} 0", $"{Debug} False", $"{Auto} False", $"{Calibrate} False",
+    };
+
+    private static readonly string[] EnabledOnly =
+    {
+        $"{Enabled} True", $"{Preset} 0", $"{Debug} False", $"{Auto} False", $"{Calibrate} False",
+    };
 
     private readonly FakeLifecycle _lifecycle = new();
     private readonly FakeConfigSource _config = new(TestConfigs.Default);
@@ -252,7 +264,7 @@ public class MainLoopOscTests
     {
         _loop.Tick();
 
-        Assert.Equal(new[] { $"{Enabled} False", $"{Preset} 0", $"{Debug} False" }, Osc.TakeSent());
+        Assert.Equal(AllOff, Osc.TakeSent());
 
         _loop.Tick();
         Assert.Empty(Osc.TakeSent());
@@ -318,7 +330,7 @@ public class MainLoopOscTests
 
         Assert.True(_state.Enabled);
         Assert.True(_factory["fingerboard"].Visible);
-        Assert.Equal(new[] { $"{Enabled} True", $"{Preset} 0", $"{Debug} False" }, Osc.TakeSent());
+        Assert.Equal(EnabledOnly, Osc.TakeSent());
 
         _time.Advance(MainLoop.AvatarChangeGrace / 2);
         Osc.Incoming.Enqueue(new OscMessage(Enabled, false));
@@ -329,7 +341,7 @@ public class MainLoopOscTests
         // 猶予が過ぎたら、もう一度送る。その後のトグルは普通に効く。
         _time.Advance(MainLoop.AvatarChangeGrace);
         _loop.Tick();
-        Assert.Equal(new[] { $"{Enabled} True", $"{Preset} 0", $"{Debug} False" }, Osc.TakeSent());
+        Assert.Equal(EnabledOnly, Osc.TakeSent());
 
         Osc.Incoming.Enqueue(new OscMessage(Enabled, false));
         _loop.Tick();

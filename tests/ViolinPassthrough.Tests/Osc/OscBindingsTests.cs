@@ -8,6 +8,8 @@ public class OscBindingsTests
     private const string Enabled = "/avatar/parameters/HandPassthrough";
     private const string Preset = "/avatar/parameters/HandPassthroughPreset";
     private const string Debug = "/avatar/parameters/HandPassthroughDebug";
+    private const string Auto = "/avatar/parameters/HandPassthroughAuto";
+    private const string Calibrate = "/avatar/parameters/HandPassthroughCalibrate";
 
     private readonly OscBindings _bindings = new(TestConfigs.Default.Osc);
     private readonly PassthroughState _state = new(false, "fingerboard", false);
@@ -23,7 +25,7 @@ public class OscBindingsTests
         Assert.Equal(Preset, _bindings.PresetAddress);
         Assert.Equal(Debug, _bindings.DebugAddress);
         Assert.Equal(
-            new[] { "/avatar/change", Enabled, Debug, Preset },
+            new[] { "/avatar/change", Enabled, Auto, Calibrate, Debug, Preset },
             _bindings.ReceiveAddresses.Order(StringComparer.Ordinal));
     }
 
@@ -130,7 +132,9 @@ public class OscBindingsTests
         _state.SetActivePreset("whole");
 
         var all = _bindings.BuildSyncMessages(_state, TestConfigs.Default, AvatarParameterValues.Unknown);
-        Assert.Equal(new[] { $"{Enabled} True", $"{Preset} 1", $"{Debug} False" }, all.Select(m => m.ToString()));
+        Assert.Equal(
+            new[] { $"{Enabled} True", $"{Preset} 1", $"{Debug} False", $"{Auto} False", $"{Calibrate} False" },
+            all.Select(m => m.ToString()));
 
         var known = OscBindings.ValuesOf(_state, TestConfigs.Default);
         Assert.Empty(_bindings.BuildSyncMessages(_state, TestConfigs.Default, known));

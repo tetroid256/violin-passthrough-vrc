@@ -297,3 +297,115 @@ public sealed class MaskOverlay : IMaskOverlay
         _ => ETrackingUniverseOrigin.TrackingUniverseStanding,
     };
 }
+
+/// <summary>
+/// 通知表示のオーバーレイ（DESIGN.md §15.4）。OpenVR の呼び出しを MaskOverlay.cs に閉じ込めるため、ここに置く。
+/// </summary>
+public sealed class VrStatusOverlay : Feedback.IStatusOverlay
+{
+    public const string OverlayKey = "violinpassthrough.status";
+
+    private ulong _handle = OpenVR.k_ulOverlayHandleInvalid;
+    private bool _shown;
+    private bool _failed;
+    private bool _disposed;
+
+    public void Show(MaskTexture texture, double widthMeters, Pose3x4 hmdRelativePose, uint sortOrder)
+    {
+        if (_disposed || !EnsureCreated())
+        {
+            return;
+        }
+
+        var overlay = OpenVR.Overlay;
+        var ok = true;
+        var pin = GCHandle.Alloc(texture.Rgba, GCHandleType.Pinned);
+        try
+        {
+            ok &= Check(overlay.SetOverlayRaw(_handle, pin.AddrOfPinnedObject(), (uint)texture.Width, (uint)texture.Height, 4), "SetOverlayRaw");
+        }
+        finally
+        {
+            pin.Free();
+        }
+
+        ok &= Check(overlay.SetOverlayTexelAspect(_handle, 1.0f), "SetOverlayTexelAspect");
+        ok &= Check(overlay.SetOverlayWidthInMeters(_handle, (float)widthMeters), "SetOverlayWidthInMeters");
+        ok &= Check(overlay.SetOverlayAlpha(_handle, 1.0f), "SetOverlayAlpha");
+        ok &= Check(overlay.SetOverlayColor(_handle, 1.0f, 1.0f, 1.0f), "SetOverlayColor");
+        ok &= Check(overlay.SetOverlaySortOrder(_handle, sortOrder), "SetOverlaySortOrder");
+        var m = MaskOverlay.ToHmdMatrix(hmdRelativePose);
+        ok &= Check(overlay.SetOverlayTransformTrackedDeviceRelative(_handle, HmdAnchor.HmdDeviceIndex, ref m),
+            "SetOverlayTransformTrackedDeviceRelative");
+
+        if (ok && !_shown)
+        {
+            _shown = Check(overlay.ShowOverlay(_handle), "ShowOverlay");
+        }
+    }
+
+    public void Hide()
+    {
+        if (_handle == OpenVR.k_ulOverlayHandleInvalid || !_shown || OpenVR.Overlay is not { } overlay)
+        {
+            return;
+        }
+
+        if (Check(overlay.HideOverlay(_handle), "HideOverlay"))
+        {
+            _shown = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        if (_handle != OpenVR.k_ulOverlayHandleInvalid && OpenVR.Overlay is { } overlay)
+        {
+            Check(overlay.DestroyOverlay(_handle), "DestroyOverlay");
+        }
+
+        _handle = OpenVR.k_ulOverlayHandleInvalid;
+    }
+
+    private bool EnsureCreated()
+    {
+        if (_handle != OpenVR.k_ulOverlayHandleInvalid)
+        {
+            return true;
+        }
+
+        // 作れなかったら（キーの重複など）何度も試してログを溢れさせない。
+        if (_failed || OpenVR.Overlay is not { } overlay)
+        {
+            return false;
+        }
+
+        ulong handle = OpenVR.k_ulOverlayHandleInvalid;
+        if (!Check(overlay.CreateOverlay(OverlayKey, "Violin Passthrough (status)", ref handle), "CreateOverlay"))
+        {
+            _failed = true;
+            return false;
+        }
+
+        _handle = handle;
+        return true;
+    }
+
+    private static bool Check(EVROverlayError error, string operation)
+    {
+        if (error == EVROverlayError.None)
+        {
+            return true;
+        }
+
+        var name = OpenVR.Overlay?.GetOverlayErrorNameFromEnum(error) ?? error.ToString();
+        Log.Error($"[status] {operation} failed: {name} ({(int)error})");
+        return false;
+    }
+}

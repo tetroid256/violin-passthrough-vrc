@@ -92,3 +92,28 @@ OSCQuery がうまく動かないとき（フォールバック）:
 - [ ] **DeviceAnchor**: `anchor` を `{ "type": "device", "role": "leftHand" }`、`position` を `[0, 0, -0.1]` にすると、窓が左手（ハンドトラッキングでは VD のエミュレートしたコントローラー）に付いて動く。
   - [ ] 手を視界の外に出して見失わせると、`onLost: "hold"` では最後の場所に残り、`"hide"` では消える。手が戻ると再び追従する。
 - [ ] DeviceAnchor を使っていても、HMD 基準の領域だけのときと比べてフレームレートが落ちない（毎フレームの姿勢取得は DeviceAnchor があるときだけ行う）。
+
+## Phase 6: 演奏のための機能
+
+準備: アバターの Expression Parameters に `HandPassthroughAuto`（Bool）と `HandPassthroughCalibrate`（Bool）を **Synced を外して** 追加し、メニューに Toggle を置いてアップロードする。VRChat の OSC の **Reset Config** を実行する。
+
+### キャリブレーション
+- [ ] HandPassthroughCalibrate を ON にすると、視界の少し上に `CALIBRATE 5` … `1` が出て、1 秒ごとにビープ音が鳴る（**ヘッドセットで聞こえるか**。聞こえなければ教えてください）。
+- [ ] 左手を 1st ポジション、右手（弓の元）を駒の近くに置いて待つと、`CALIBRATED` と出て高い音が鳴り、5 秒間、新しい窓が赤く表示される。窓が左手から駒までを覆っている。
+- [ ] メニューの Calibrate トグルが自動で OFF に戻る。
+- [ ] `%APPDATA%\ViolinPassthrough\config.json` の fingerboard の `position` / `rotationEulerDeg` / `widthMeters` と `auto.leftHandPosition` / `auto.headUp` が書き換わり、`config.json.bak` に元の内容がある。
+- [ ] カウントダウン中に Calibrate を OFF にすると `CALIBRATION CANCELLED` と出て、設定は変わらない。
+- [ ] 片手を背中に回すなどして見失わせると `CAL FAILED: NO LEFT HAND`（または RIGHT）と出て、設定は変わらない。
+- [ ] 何度か繰り返して、窓の位置が毎回ほぼ同じになる（ハンドトラッキングの精度の確認）。窓が短い・ずれるときは結果を教えてください（`padMeters` の既定値や手の位置の補正を決めるため）。
+
+### 自動モード
+- [ ] HandPassthrough と HandPassthroughAuto を ON にすると `AUTO ON` と出る。楽器を下ろしていると窓は出ない。
+- [ ] 楽器を構えると、すぐに（約 0.3 秒で）窓が出る。演奏中に窓が消えない（**左手のハンドトラッキングが途切れても消えないか**）。
+- [ ] 楽器を下ろすと、約 2 秒で窓が消える。
+- [ ] 歩き回ったり、向きを変えたりしても、構えたときだけ出る。
+- [ ] 演奏中に窓が出たり消えたりするときは、`"useHeadTilt": true`（キャリブレーションを一度してから）や `radiusMeters` を大きくして試し、結果を教えてください。
+
+### 通知
+- [ ] Preset を切り替えると `PRESET WHOLE` などと出る。
+- [ ] config.json を保存すると `CONFIG RELOADED`、壊して保存すると `CONFIG ERROR - SEE LOG` と出る。
+- [ ] 通知の文字が読める大きさで、演奏の邪魔にならない位置にある（`feedback.position` / `textHeightMeters` で調整できる）。

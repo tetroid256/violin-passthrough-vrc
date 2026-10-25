@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using ViolinPassthrough.Anchor;
+using ViolinPassthrough.Auto;
 using ViolinPassthrough.Logging;
 using ViolinPassthrough.Mask;
 
@@ -80,6 +81,9 @@ public static partial class ConfigValidator
         }
 
         var osc = ValidateOsc(raw.Osc, errors);
+        var auto = ValidateAuto(raw.Auto, errors);
+        var calibration = ValidateCalibration(raw.Calibration, errors);
+        var feedback = ValidateFeedback(raw.Feedback, errors);
         var logLevel = ParseLogLevel(raw.LogLevel, errors);
 
         if (errors.Count > 0)
@@ -96,6 +100,9 @@ public static partial class ConfigValidator
             presets,
             regions,
             osc!,
+            auto!,
+            calibration!,
+            feedback!,
             logLevel);
         return new ConfigParseResult(config, Array.Empty<string>());
     }
@@ -499,7 +506,14 @@ public static partial class ConfigValidator
             return null;
         }
 
-        var names = new[] { ("enabled", parameters.Enabled), ("preset", parameters.Preset), ("debug", parameters.Debug) };
+        var names = new[]
+        {
+            ("enabled", parameters.Enabled),
+            ("preset", parameters.Preset),
+            ("debug", parameters.Debug),
+            ("auto", parameters.Auto),
+            ("calibrate", parameters.Calibrate),
+        };
         foreach (var (key, value) in names)
         {
             if (string.IsNullOrWhiteSpace(value) || value.Any(char.IsWhiteSpace))
@@ -510,7 +524,7 @@ public static partial class ConfigValidator
 
         if (names.Select(n => n.Item2).Distinct(StringComparer.Ordinal).Count() != names.Length)
         {
-            errors.Add("osc.parameters must use different names for enabled, preset and debug.");
+            errors.Add("osc.parameters must use different names for enabled, preset, debug, auto and calibrate.");
         }
 
         return new OscSettings(
@@ -520,7 +534,117 @@ public static partial class ConfigValidator
             osc.VrchatSendPort,
             parameters.Enabled ?? string.Empty,
             parameters.Preset ?? string.Empty,
-            parameters.Debug ?? string.Empty);
+            parameters.Debug ?? string.Empty,
+            parameters.Auto ?? string.Empty,
+            parameters.Calibrate ?? string.Empty);
+    }
+
+    private static AutoSettings? ValidateAuto(AutoConfig? auto, List<string> errors)
+    {
+        if (auto is null)
+        {
+            errors.Add("auto must be an object (or omitted).");
+            return null;
+        }
+
+        var before = errors.Count;
+        var leftHand = ValidateVector(auto.LeftHandPosition, "leftHandPosition", "auto", required: auto.UseLeftHand, errors);
+        Vec3? headUp = null;
+        if (auto.HeadUp is not null)
+        {
+            var up = ValidateVector(auto.HeadUp, "headUp", "auto", required: true, errors);
+            if (up.Length < 1e-6)
+            {
+                errors.Add("auto: headUp must not be [0, 0, 0].");
+            }
+            else
+            {
+                headUp = up.Normalized();
+            }
+        }
+        else if (auto.UseHeadTilt)
+        {
+            errors.Add("auto: useHeadTilt needs auto.headUp (run the calibration once to record it).");
+        }
+
+        if (!auto.UseLeftHand && !auto.UseHeadTilt)
+        {
+            errors.Add("auto: enable at least one of useLeftHand or useHeadTilt.");
+        }
+
+        ValidateBetween(auto.RadiusMeters, "auto.radiusMeters", 0.02, 1.0, errors);
+        ValidateBetween(auto.HeadTiltToleranceDeg, "auto.headTiltToleranceDeg", 1, 90, errors);
+        ValidateBetween(auto.EnterDelaySeconds, "auto.enterDelaySeconds", 0, 10, errors);
+        ValidateBetween(auto.ExitDelaySeconds, "auto.exitDelaySeconds", 0, 30, errors);
+
+        return errors.Count == before
+            ? new AutoSettings(
+                auto.Enabled,
+                auto.UseLeftHand,
+                auto.UseHeadTilt,
+                leftHand,
+                headUp,
+                auto.RadiusMeters,
+                auto.HeadTiltToleranceDeg,
+                auto.EnterDelaySeconds,
+                auto.ExitDelaySeconds)
+            : null;
+    }
+
+    private static CalibrationSettings? ValidateCalibration(CalibrationConfig? calibration, List<string> errors)
+    {
+        if (calibration is null)
+        {
+            errors.Add("calibration must be an object (or omitted).");
+            return null;
+        }
+
+        var before = errors.Count;
+        // 領域があるか・HMD 基準かは、キャリブレーションを実行するときに確かめる
+        // （キャリブレーションを使わない人の設定をエラーにしないため）。
+        if (string.IsNullOrWhiteSpace(calibration.RegionId))
+        {
+            errors.Add("calibration.regionId must not be empty.");
+        }
+
+        if (calibration.CountdownSeconds is < 1 or > 30)
+        {
+            errors.Add($"calibration.countdownSeconds must be between 1 and 30 (got {calibration.CountdownSeconds}).");
+        }
+
+        ValidateBetween(calibration.PadMeters, "calibration.padMeters", 0, 0.5, errors);
+        ValidateBetween(calibration.PreviewSeconds, "calibration.previewSeconds", 0, 60, errors);
+
+        return errors.Count == before
+            ? new CalibrationSettings(
+                calibration.RegionId ?? string.Empty,
+                calibration.CountdownSeconds,
+                calibration.PadMeters,
+                calibration.PreviewSeconds,
+                calibration.Beep)
+            : null;
+    }
+
+    private static FeedbackSettings? ValidateFeedback(FeedbackConfig? feedback, List<string> errors)
+    {
+        if (feedback is null)
+        {
+            errors.Add("feedback must be an object (or omitted).");
+            return null;
+        }
+
+        var before = errors.Count;
+        var position = ValidateVector(feedback.Position, "position", "feedback", required: true, errors);
+        ValidateBetween(feedback.TextHeightMeters, "feedback.textHeightMeters", 0.005, 0.2, errors);
+        return errors.Count == before ? new FeedbackSettings(feedback.Toasts, position, feedback.TextHeightMeters) : null;
+    }
+
+    private static void ValidateBetween(double value, string name, double min, double max, List<string> errors)
+    {
+        if (!double.IsFinite(value) || value < min || value > max)
+        {
+            errors.Add($"{name} must be between {min} and {max} (got {value}).");
+        }
     }
 
     private static void ValidatePort(int port, string name, List<string> errors)

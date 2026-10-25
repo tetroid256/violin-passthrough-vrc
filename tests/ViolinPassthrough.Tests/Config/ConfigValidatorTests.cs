@@ -39,7 +39,7 @@ public class ConfigValidatorTests
             config.Presets.Select(p => (p.Name, string.Join(",", p.RegionIds))));
 
         Assert.Equal(
-            new OscSettings(true, 9011, "127.0.0.1", 9000, "HandPassthrough", "HandPassthroughPreset", "HandPassthroughDebug"),
+            new OscSettings(true, 9011, "127.0.0.1", 9000, "HandPassthrough", "HandPassthroughPreset", "HandPassthroughDebug", "HandPassthroughAuto", "HandPassthroughCalibrate"),
             config.Osc);
     }
 

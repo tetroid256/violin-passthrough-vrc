@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using ViolinPassthrough.App;
 using ViolinPassthrough.Config;
+using ViolinPassthrough.Feedback;
 using ViolinPassthrough.Logging;
 using ViolinPassthrough.Mask;
 using ViolinPassthrough.Osc;
@@ -131,8 +132,9 @@ internal static partial class Program
             var state = MainLoop.CreateInitialState(configStore.Current);
             Log.Info($"Initial state: {state}.");
 
+            var status = new StatusDisplay(new VrStatusOverlay());
             using (var overlays = new MaskOverlaySet(id => new MaskOverlay(id)))
-            using (var loop = new MainLoop(lifecycle, configStore, state, overlays, StartOsc))
+            using (var loop = new MainLoop(lifecycle, configStore, state, overlays, StartOsc, status: status, beeper: new WindowsBeeper()))
             {
                 if (loop.Run(cts.Token))
                 {

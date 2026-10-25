@@ -1,3 +1,5 @@
+using ViolinPassthrough.Anchor;
+using ViolinPassthrough.Auto;
 using ViolinPassthrough.Logging;
 using ViolinPassthrough.Mask;
 
@@ -14,7 +16,20 @@ public sealed record OscSettings(
     int VrchatSendPort,
     string EnabledParameter,
     string PresetParameter,
-    string DebugParameter);
+    string DebugParameter,
+    string AutoParameter,
+    string CalibrateParameter);
+
+/// <summary>キャリブレーションの設定（検証済み）。</summary>
+public sealed record CalibrationSettings(
+    string RegionId,
+    int CountdownSeconds,
+    double PadMeters,
+    double PreviewSeconds,
+    bool Beep);
+
+/// <summary>VR 内の通知表示の設定（検証済み）。</summary>
+public sealed record FeedbackSettings(bool Toasts, Vec3 Position, double TextHeightMeters);
 
 /// <summary>
 /// 検証済みで、実行時の型に変換した設定。
@@ -27,6 +42,9 @@ public sealed record ResolvedConfig(
     IReadOnlyList<PresetDefinition> Presets,
     IReadOnlyList<MaskRegion> Regions,
     OscSettings Osc,
+    AutoSettings Auto,
+    CalibrationSettings Calibration,
+    FeedbackSettings Feedback,
     LogLevel LogLevel)
 {
     public PresetDefinition? FindPreset(string name) => Presets.FirstOrDefault(p => p.Name == name);

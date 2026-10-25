@@ -40,8 +40,32 @@
     "parameters": {
       "enabled": "HandPassthrough",
       "preset": "HandPassthroughPreset",
-      "debug": "HandPassthroughDebug"
+      "debug": "HandPassthroughDebug",
+      "auto": "HandPassthroughAuto",
+      "calibrate": "HandPassthroughCalibrate"
     }
+  },
+  "auto": {
+    "enabled": false,
+    "useLeftHand": true,
+    "useHeadTilt": false,
+    "leftHandPosition": [-0.35, -0.10, -0.35],
+    "radiusMeters": 0.15,
+    "headTiltToleranceDeg": 15,
+    "enterDelaySeconds": 0.3,
+    "exitDelaySeconds": 2.0
+  },
+  "calibration": {
+    "regionId": "fingerboard",
+    "countdownSeconds": 5,
+    "padMeters": 0.05,
+    "previewSeconds": 5,
+    "beep": true
+  },
+  "feedback": {
+    "toasts": true,
+    "position": [0, 0.08, -0.5],
+    "textHeightMeters": 0.025
   },
   "logLevel": "Info"
 }

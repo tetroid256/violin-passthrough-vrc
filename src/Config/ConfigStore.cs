@@ -1,4 +1,10 @@
 using System.Reflection;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using ViolinPassthrough.Anchor;
+using ViolinPassthrough.Calibration;
 using ViolinPassthrough.Logging;
 
 namespace ViolinPassthrough.Config;
@@ -11,6 +17,12 @@ public interface IConfigSource
 
     /// <summary>変更があれば読み込む。新しい正常な設定を読み込んだら true。</summary>
     bool TryReload(out ResolvedConfig? config);
+
+    /// <summary>不正な設定を読んだ回数。増えたら通知表示でエラーを知らせる。</summary>
+    int InvalidCount { get; }
+
+    /// <summary>キャリブレーションの結果を設定ファイルに書き込む。反映はホットリロードで行う。</summary>
+    bool TryApplyCalibration(CalibrationResult result, out string error);
 }
 
 /// <summary>
@@ -18,7 +30,7 @@ public interface IConfigSource
 /// 変更の検出は FileSystemWatcher と更新日時のポーリングの両方で行う（どちらかが取りこぼしても1秒以内に反映するため）。
 /// 読み込み自体はメインループから <see cref="TryReload"/> で行うので、スレッドをまたがない。
 /// </summary>
-public sealed class ConfigStore : IConfigSource, IDisposable
+public sealed partial class ConfigStore : IConfigSource, IDisposable
 {
     public const string DefaultConfigResourceName = "ViolinPassthrough.config.default.json";
 
@@ -55,6 +67,11 @@ public sealed class ConfigStore : IConfigSource, IDisposable
 
     /// <summary>最後に読み込めた正常な設定。</summary>
     public ResolvedConfig Current { get; private set; }
+
+    public int InvalidCount { get; private set; }
+
+    /// <summary>キャリブレーションで書き換える前の内容を残すファイル。</summary>
+    public string BackupPath => FilePath + ".bak";
 
     /// <summary>同梱の既定の設定（config.default.json）。</summary>
     public static string ReadDefaultConfigText()
@@ -123,7 +140,14 @@ public sealed class ConfigStore : IConfigSource, IDisposable
         if (_lastPoll is not { } lastPoll || _time.GetElapsedTime(lastPoll, now) >= PollInterval)
         {
             _lastPoll = now;
-            if (!Equals(GetStamp(), _loadedStamp))
+            bool dirty;
+            lock (_gate)
+            {
+                dirty = _dirty;
+            }
+
+            // すでに変更を検知していれば、待ち時間を数え直さない。
+            if (!dirty && !Equals(GetStamp(), _loadedStamp))
             {
                 MarkDirty();
             }
@@ -213,6 +237,7 @@ public sealed class ConfigStore : IConfigSource, IDisposable
 
         if (!result.Success)
         {
+            InvalidCount++;
             Log.Warn($"Config file {FilePath} is invalid; keeping the previous config:{Environment.NewLine}  - " +
                 string.Join(Environment.NewLine + "  - ", result.Errors));
             return false;
@@ -221,6 +246,110 @@ public sealed class ConfigStore : IConfigSource, IDisposable
         config = result.Config;
         return true;
     }
+
+    /// <summary>
+    /// キャリブレーションの結果を設定ファイルに書き込む（DESIGN.md §15.2）。
+    /// 領域の position / rotationEulerDeg / widthMeters と、auto.leftHandPosition / auto.headUp を書き換える。
+    /// 書く前に元のファイルを .bak に残し、一時ファイルに書いてから置き換える。JSON のコメントは消える。
+    /// </summary>
+    public bool TryApplyCalibration(CalibrationResult result, out string error)
+    {
+        try
+        {
+            string text;
+            using (var stream = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            using (var reader = new StreamReader(stream))
+            {
+                text = reader.ReadToEnd();
+            }
+
+            var json = UpdateCalibrationJson(text, result, out error);
+            if (json is null)
+            {
+                return false;
+            }
+
+            var check = ConfigValidator.Parse(json);
+            if (!check.Success)
+            {
+                error = "RESULT IS INVALID";
+                Log.Warn("Calibration result would make the config invalid: " + string.Join("; ", check.Errors));
+                return false;
+            }
+
+            File.Copy(FilePath, BackupPath, overwrite: true);
+            var temp = FilePath + ".tmp";
+            File.WriteAllText(temp, json);
+            File.Move(temp, FilePath, overwrite: true);
+            MarkDirty();
+            Log.Info($"Calibration written to {FilePath} (backup: {BackupPath}).");
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            Log.Error("Failed to write the calibration", ex);
+            error = "CANNOT WRITE CONFIG";
+            return false;
+        }
+    }
+
+    /// <summary>設定の JSON にキャリブレーションの結果を書き込んだ文字列。書けなければ null。</summary>
+    internal static string? UpdateCalibrationJson(string text, CalibrationResult result, out string error)
+    {
+        var root = JsonNode.Parse(
+            text,
+            new JsonNodeOptions { PropertyNameCaseInsensitive = true },
+            new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true }) as JsonObject;
+        if (root?["regions"] is not JsonArray regions)
+        {
+            error = "CONFIG HAS NO REGIONS";
+            return null;
+        }
+
+        var region = regions.OfType<JsonObject>().FirstOrDefault(r =>
+            r["id"] is JsonValue id && id.TryGetValue<string>(out var value) && value == result.RegionId);
+        if (region is null)
+        {
+            error = "REGION NOT FOUND";
+            return null;
+        }
+
+        region["position"] = Vector(result.Position, 3);
+        region["rotationEulerDeg"] = Vector(result.RotationEulerDeg, 1);
+        region["widthMeters"] = Round(result.WidthMeters, 3);
+
+        if (root["auto"] is not JsonObject auto)
+        {
+            auto = new JsonObject();
+            root["auto"] = auto;
+        }
+
+        auto["leftHandPosition"] = Vector(result.LeftHandPosition, 3);
+        auto["headUp"] = Vector(result.HeadUp, 3);
+
+        var json = root.ToJsonString(new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        });
+
+        // 数値だけの配列は1行にまとめる（手で編集しやすいように）。
+        json = NumberArrayPattern().Replace(json, m =>
+            "[" + string.Join(", ", m.Groups[1].Value.Split(',').Select(v => v.Trim())) + "]");
+
+        error = string.Empty;
+        return json + Environment.NewLine;
+    }
+
+    private static JsonArray Vector(Vec3 v, int digits) =>
+        new(Round(v.X, digits), Round(v.Y, digits), Round(v.Z, digits));
+
+    // -0 を 0 にしてから丸める（"-0" と書かないため）。
+    private static JsonNode Round(double value, int digits) => JsonValue.Create(Math.Round(value, digits) + 0.0);
+
+    [GeneratedRegex(@"\[\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)*)\s*\]")]
+    private static partial Regex NumberArrayPattern();
 
     private (DateTime WriteTimeUtc, long Length)? GetStamp()
     {

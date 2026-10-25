@@ -146,6 +146,8 @@ public sealed class OscService : IOscEndpoint
             _oscQuery.AddEndpoint<bool>(OscBindings.ParameterPrefix + settings.EnabledParameter, Attributes.AccessValues.WriteOnly, null, "Passthrough on/off");
             _oscQuery.AddEndpoint<int>(OscBindings.ParameterPrefix + settings.PresetParameter, Attributes.AccessValues.WriteOnly, null, "Passthrough preset index");
             _oscQuery.AddEndpoint<bool>(OscBindings.ParameterPrefix + settings.DebugParameter, Attributes.AccessValues.WriteOnly, null, "Passthrough debug display");
+            _oscQuery.AddEndpoint<bool>(OscBindings.ParameterPrefix + settings.AutoParameter, Attributes.AccessValues.WriteOnly, null, "Passthrough auto mode");
+            _oscQuery.AddEndpoint<bool>(OscBindings.ParameterPrefix + settings.CalibrateParameter, Attributes.AccessValues.WriteOnly, null, "Passthrough calibration");
 
             _oscQuery.StartHttpServer();
             // 広告する前に、HTTP サーバーが応答するかを確かめる（使えないサービスを広告しないため）。

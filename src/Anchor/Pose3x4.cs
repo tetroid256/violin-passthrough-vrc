@@ -1,6 +1,38 @@
 namespace ViolinPassthrough.Anchor;
 
-public readonly record struct Vec3(double X, double Y, double Z);
+public readonly record struct Vec3(double X, double Y, double Z)
+{
+    public double Length => Math.Sqrt(Dot(this, this));
+
+    public static Vec3 operator +(Vec3 a, Vec3 b) => new(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
+
+    public static Vec3 operator -(Vec3 a, Vec3 b) => new(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
+
+    public static Vec3 operator -(Vec3 a) => new(-a.X, -a.Y, -a.Z);
+
+    public static Vec3 operator *(Vec3 a, double k) => new(a.X * k, a.Y * k, a.Z * k);
+
+    public static double Dot(Vec3 a, Vec3 b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+
+    public static Vec3 Cross(Vec3 a, Vec3 b) => new(
+        a.Y * b.Z - a.Z * b.Y,
+        a.Z * b.X - a.X * b.Z,
+        a.X * b.Y - a.Y * b.X);
+
+    /// <summary>長さ 1 にする。長さがほぼ 0 なら 0 ベクトルのまま。</summary>
+    public Vec3 Normalized()
+    {
+        var length = Length;
+        return length < 1e-12 ? default : this * (1.0 / length);
+    }
+
+    /// <summary>2 つの向きのなす角（度）。</summary>
+    public static double AngleDeg(Vec3 a, Vec3 b)
+    {
+        var cos = Dot(a.Normalized(), b.Normalized());
+        return Math.Acos(Math.Clamp(cos, -1.0, 1.0)) * 180.0 / Math.PI;
+    }
+}
 
 /// <summary>
 /// 3x4 の剛体変換（回転＋平行移動）。行優先で、OpenVR の HmdMatrix34_t と同じ並び。
@@ -17,6 +49,50 @@ public readonly record struct Pose3x4(
         0, 0, 1, 0);
 
     public Vec3 Translation => new(M03, M13, M23);
+
+    /// <summary>
+    /// 軸（列）と位置から姿勢を作る。<paramref name="x"/>, <paramref name="y"/>, <paramref name="z"/> は正規直交で右手系であること。
+    /// </summary>
+    public static Pose3x4 FromBasis(Vec3 position, Vec3 x, Vec3 y, Vec3 z) => new(
+        x.X, y.X, z.X, position.X,
+        x.Y, y.Y, z.Y, position.Y,
+        x.Z, y.Z, z.Z, position.Z);
+
+    /// <summary>逆変換（回転は転置、平行移動は -Rᵀt）。</summary>
+    public Pose3x4 Inverse()
+    {
+        var t = Translation;
+        return new Pose3x4(
+            M00, M10, M20, -(M00 * t.X + M10 * t.Y + M20 * t.Z),
+            M01, M11, M21, -(M01 * t.X + M11 * t.Y + M21 * t.Z),
+            M02, M12, M22, -(M02 * t.X + M12 * t.Y + M22 * t.Z));
+    }
+
+    /// <summary>
+    /// 回転を <see cref="FromPositionEuler"/> と同じ規約のオイラー角（pitch, yaw, roll。度）に分解する。
+    /// R = Ry(yaw) * Rx(-pitch) * Rz(roll) なので、M12 = sin(pitch)、M02 / M22 から yaw、M10 / M11 から roll。
+    /// </summary>
+    public Vec3 ToEulerDeg()
+    {
+        const double toDeg = 180.0 / Math.PI;
+        var pitch = Math.Asin(Math.Clamp(M12, -1.0, 1.0));
+        var cosPitch = Math.Cos(pitch);
+        double yaw;
+        double roll;
+        if (Math.Abs(cosPitch) > 1e-6)
+        {
+            yaw = Math.Atan2(M02, M22);
+            roll = Math.Atan2(M10, M11);
+        }
+        else
+        {
+            // 真上か真下を向いている（ジンバルロック）。roll を 0 として yaw に寄せる。
+            yaw = Math.Atan2(-M20, M00);
+            roll = 0;
+        }
+
+        return new Vec3(pitch * toDeg, yaw * toDeg, roll * toDeg);
+    }
 
     /// <summary>
     /// 位置とオイラー角（度）から板の姿勢を作る。板は XY 平面にあり、表（見える面）は +Z を向く。

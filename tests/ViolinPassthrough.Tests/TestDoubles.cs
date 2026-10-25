@@ -123,6 +123,24 @@ internal sealed class FakeConfigSource : IConfigSource
 
     public ResolvedConfig Current { get; private set; }
 
+    public int InvalidCount { get; set; }
+
+    public List<ViolinPassthrough.Calibration.CalibrationResult> Calibrations { get; } = new();
+
+    public string? CalibrationError { get; set; }
+
+    public bool TryApplyCalibration(ViolinPassthrough.Calibration.CalibrationResult result, out string error)
+    {
+        error = CalibrationError ?? string.Empty;
+        if (CalibrationError is not null)
+        {
+            return false;
+        }
+
+        Calibrations.Add(result);
+        return true;
+    }
+
     public void Publish(ResolvedConfig config) => _pending = config;
 
     public bool TryReload(out ResolvedConfig? config)
@@ -168,6 +186,65 @@ internal sealed class FakeOscEndpoint : IOscEndpoint
         Sent.Clear();
         return sent;
     }
+}
+
+internal sealed class FakeBeeper : ViolinPassthrough.Feedback.IBeeper
+{
+    public List<ViolinPassthrough.Feedback.BeepKind> Beeps { get; } = new();
+
+    public void Beep(ViolinPassthrough.Feedback.BeepKind kind) => Beeps.Add(kind);
+}
+
+internal sealed class FakeStatusOverlay : ViolinPassthrough.Feedback.IStatusOverlay
+{
+    public int ShowCount { get; private set; }
+
+    public bool Visible { get; private set; }
+
+    public MaskTexture? Texture { get; private set; }
+
+    public double WidthMeters { get; private set; }
+
+    public Pose3x4 Pose { get; private set; }
+
+    public uint SortOrder { get; private set; }
+
+    public void Show(MaskTexture texture, double widthMeters, Pose3x4 hmdRelativePose, uint sortOrder)
+    {
+        ShowCount++;
+        Visible = true;
+        Texture = texture;
+        WidthMeters = widthMeters;
+        Pose = hmdRelativePose;
+        SortOrder = sortOrder;
+    }
+
+    public void Hide() => Visible = false;
+
+    public void Dispose()
+    {
+    }
+}
+
+/// <summary>HMD を 0 番、左手を 1 番、右手を 2 番に置いたトラッキング情報を作る。</summary>
+internal static class Tracking
+{
+    public const uint Left = 1;
+    public const uint Right = 2;
+
+    public static TrackingSnapshot Make(Pose3x4 hmd, Vec3? leftLocal, Vec3? rightLocal, bool hmdValid = true)
+    {
+        DevicePose At(Vec3? local) => local is { } p
+            ? new DevicePose(true, true, hmd * (Pose3x4.Identity with { M03 = p.X, M13 = p.Y, M23 = p.Z }))
+            : new DevicePose(false, false, Pose3x4.Identity);
+
+        var poses = new[] { new DevicePose(true, hmdValid, hmd), At(leftLocal), At(rightLocal) };
+        return new TrackingSnapshot(TrackingUniverse.Standing, poses, Left, Right, new Dictionary<string, uint>());
+    }
+
+    /// <summary>立って正面を向いた HMD（床から 1.6 m）。</summary>
+    public static Pose3x4 StandingHmd(double yawDeg = 0, double rollDeg = 0) =>
+        Pose3x4.FromPositionEuler(new Vec3(0.2, 1.6, -0.1), new Vec3(0, yawDeg, rollDeg));
 }
 
 internal static class TestConfigs
