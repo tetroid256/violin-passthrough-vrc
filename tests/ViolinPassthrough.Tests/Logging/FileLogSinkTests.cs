@@ -7,6 +7,16 @@ public sealed class FileLogSinkTests : IDisposable
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "vp-log-" + Guid.NewGuid().ToString("N"));
     private DateTime _now = new(2026, 10, 25, 23, 59, 0);
 
+    /// <summary>
+    /// 書き込み中のログファイルを読む。Windows では File.ReadAllText だと書き込み側と共有できずに失敗する
+    /// （ユーザーがメモ帳などで開くときと同じく、書き込みを許して開く）。
+    /// </summary>
+    private static string ReadShared(string path)
+    {
+        using var reader = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete));
+        return reader.ReadToEnd();
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dir))
@@ -24,8 +34,7 @@ public sealed class FileLogSinkTests : IDisposable
         sink.Write("second");
 
         Assert.Equal(Path.Combine(_dir, "ViolinPassthrough-20261025.log"), sink.CurrentPath);
-        using var reader = new StreamReader(new FileStream(sink.CurrentPath!, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
-        Assert.Equal("first" + Environment.NewLine + "second" + Environment.NewLine, reader.ReadToEnd());
+        Assert.Equal("first" + Environment.NewLine + "second" + Environment.NewLine, ReadShared(sink.CurrentPath!));
     }
 
     [Fact]
@@ -50,7 +59,7 @@ public sealed class FileLogSinkTests : IDisposable
 
         sink.Write("after");
 
-        Assert.Equal("before" + Environment.NewLine, File.ReadAllText(sink.CurrentPath!));
+        Assert.Equal("before" + Environment.NewLine, ReadShared(sink.CurrentPath!));
     }
 
     [Fact]
@@ -61,7 +70,7 @@ public sealed class FileLogSinkTests : IDisposable
 
         sink.Write("x");
 
-        Assert.Equal("x" + Environment.NewLine, File.ReadAllText(sink.CurrentPath!));
+        Assert.Equal("x" + Environment.NewLine, ReadShared(sink.CurrentPath!));
     }
 
     [Fact]
@@ -81,7 +90,7 @@ public sealed class FileLogSinkTests : IDisposable
         sink.Write("next day");
 
         Assert.Equal(blocker, sink.CurrentPath);
-        Assert.Equal("next day" + Environment.NewLine, File.ReadAllText(blocker));
+        Assert.Equal("next day" + Environment.NewLine, ReadShared(blocker));
     }
 
     [Fact]
