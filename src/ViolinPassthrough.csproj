@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- SteamVR から自動起動されるときにコンソール窓を出さない（ログを見たいときは console オプション）。LibraryImport のため unsafe を許可。 -->
+    <OutputType>WinExe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Version>1.0.0</Version>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>ViolinPassthrough</AssemblyName>
+    <RootNamespace>ViolinPassthrough</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ViolinPassthrough.Tests" />
+  </ItemGroup>
+
+  <!-- 既定の設定。初回起動時に %APPDATA% へコピーする元として埋め込み、参照用に出力先にも置く。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="../resources/config.default.json" LogicalName="ViolinPassthrough.config.default.json" />
+    <None Include="../resources/config.default.json" Link="config.default.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- SteamVR に登録するマニフェスト。exe と同じフォルダに置く。 -->
+  <ItemGroup>
+    <None Include="../resources/manifest.vrmanifest" Link="manifest.vrmanifest" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- OpenVR 公式バインディング（third_party/openvr、バージョンは README を参照） -->
+  <ItemGroup>
+    <Compile Include="../third_party/openvr/openvr_api.cs" Link="OpenVR/openvr_api.cs" />
+    <None Include="../third_party/openvr/win64/openvr_api.dll" Link="openvr_api.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="VRChat.OSCQuery" Version="0.0.7" />
+  </ItemGroup>
+
+</Project>
