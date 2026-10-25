@@ -377,4 +377,11 @@ OpenVR の HMD 座標系に従う。単位はメートル。+X が右、+Y が�
 - **アバター変更直後の猶予**: `/avatar/change` の後 2 秒間は、パラメータの値を受け取らない（新しいアバターの既定値で状態が変わらないように）。猶予が過ぎたら現在の状態をもう一度送る。
 - **型の許容**: Bool のパラメータに Int / Float が来ても受け取る（0 以外 / 0.5 以上を true）。Int のプリセットに Float が来たら四捨五入する。
 - **OSC 設定のホットリロード**: `osc` の項目が変わったら OSC を作り直す。
+- **自動起動の扱い**: 初めて登録したとき（と、別の場所から登録し直したとき）だけ `SetApplicationAutoLaunch(true)` を呼ぶ。登録済みなら触らない（SteamVR の設定で自動起動を切ったら、その設定を尊重する）。
+- **フォルダを移動したとき**: 登録済みの `BinaryPath` が今の exe と違えば、古い場所のマニフェストを `RemoveApplicationManifest` してから登録し直す。
+- **登録の解除**: `--unregister` で自動起動を切り、マニフェストを外す。
+- **SteamVR の異常終了**: VREvent_Quit が来ないので、5 秒ごとに `vrserver` プロセスがあるかを確かめ、無ければ終了する。
+- **コマンドライン**: `--console`（親のコンソールに繋ぐか新しく開いてログを出す）、`--config PATH`、`--unregister`、`--help`。
+- **ログ**: `%APPDATA%\ViolinPassthrough\logs\ViolinPassthrough-yyyyMMdd.log`。日付で分け、7 日より古いものは消す。実行中でも開けるように共有モードで書く。
+- **多重起動防止**: Mutex 名は `Local\ViolinPassthrough.SingleInstance`。前のインスタンスが異常終了して放棄された Mutex は、そのまま引き継ぐ。
 - **メインループの例外**: 1フレームの処理で想定外の例外が出ても、ログに出して次のフレームへ進む（常駐アプリなので落とさない）。

@@ -1,0 +1,17 @@
+{
+  "source": "builtin",
+  "applications": [
+    {
+      "app_key": "local.violinpassthrough",
+      "launch_type": "binary",
+      "binary_path_windows": "ViolinPassthrough.exe",
+      "is_dashboard_overlay": true,
+      "strings": {
+        "en_us": {
+          "name": "Violin Passthrough",
+          "description": "Chroma-key hand passthrough mask"
+        }
+      }
+    }
+  ]
+}

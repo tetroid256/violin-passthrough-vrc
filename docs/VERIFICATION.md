@@ -12,7 +12,7 @@
 ## Phase 1: 抜け確認
 
 1. VD で SteamVR を起動する。
-2. `ViolinPassthrough.exe` を実行する（Phase 1 ではコンソール窓が出て、ログが表示される）。
+2. `ViolinPassthrough.exe --console` を実行する（コンソール窓にログが出る。Phase 4 からは引数なしだと窓は出ず、ログはファイルに出る）。
 3. 確認すること:
    - [ ] ログに `OpenVR initialized as an overlay application.` と `[fingerboard] Shown.` が出る。`failed` を含む行が出ない。
    - [ ] VR 内の左下前方に、楕円の「外界が見える窓」が出る。
@@ -29,7 +29,7 @@
 
 設定ファイルは `%APPDATA%\ViolinPassthrough\config.json`（エクスプローラーのアドレス欄に `%APPDATA%\ViolinPassthrough` と入力すると開ける）。初回起動時に既定の設定がコピーされる。項目の意味は README の「設定」を参照。
 
-1. SteamVR を起動してから `ViolinPassthrough.exe` を実行する。ログに `Loaded config from ...config.json` が出る。
+1. SteamVR を起動してから `ViolinPassthrough.exe --console` を実行する。ログに `Loaded config from ...config.json` が出る。
 2. 既定では `startEnabled: false` なので何も表示されない。
 3. 確認すること（XSOverlay のデスクトップ窓などで config.json を開き、保存するたびに確認する）:
    - [ ] `"debugVisible": true` にして保存すると、1秒以内に **半透明の赤＋白い枠** の楕円が出る（抜けない）。ログに `Config reloaded.` と `Debug display on (config).` が出る。
@@ -60,3 +60,18 @@
 
 OSCQuery がうまく動かないとき（フォールバック）:
 - `"useOscQuery": false` にすると `fallbackListenPort`（既定 9011）で待ち受ける。この場合は VRChat の起動オプションに `--osc=9000:127.0.0.1:9011` を付けて送信先を変える必要がある（XSOverlay などが 9001 を使っていても競合しない）。
+
+## Phase 4: 自動起動と常駐
+
+ログは `%APPDATA%\ViolinPassthrough\logs\ViolinPassthrough-yyyyMMdd.log`（7 日分を残す）。
+
+1. 展開したフォルダを **ずっと置いておく場所** に移す（例: `C:\Tools\ViolinPassthrough`）。SteamVR はこの場所を覚えるので、後で動かしたら一度手で起動し直す（自動で登録し直す）。
+2. SteamVR を起動し、`ViolinPassthrough.exe` を **引数なしでダブルクリック** する（窓は出ない）。
+3. 確認すること:
+   - [ ] ログに `Registered ...manifest.vrmanifest with SteamVR and enabled auto launch.` が出る（2回目以降は `Already registered with SteamVR (auto launch: True).`）。
+   - [ ] SteamVR の設定 → スタートアップ／シャットダウン → 「起動時のオーバーレイアプリを選択」に **Violin Passthrough** があり、オンになっている。
+   - [ ] もう一度 exe をダブルクリックしても2つ目は起動しない（ログに `Another instance is already running.`）。
+   - [ ] **SteamVR を終了すると、本アプリも終了する**（タスクマネージャーから ViolinPassthrough が消える。ログに `Received VREvent_Quit.` → `Acknowledged quit.` → `Violin Passthrough exiting.`）。
+   - [ ] **SteamVR を起動するだけで、本アプリが立ち上がる**（ログに新しい `starting` の行が出る。VRChat のトグルが効く）。
+   - [ ] SteamVR が異常終了したとき（タスクマネージャーで vrserver を終了するなど）も、5 秒以内に本アプリが終了する。
+4. 自動起動をやめたいとき: SteamVR の設定で Violin Passthrough をオフにする（本アプリは再びオンにしない）。登録ごと消すときは SteamVR を起動した状態で `ViolinPassthrough.exe --unregister` を実行する。

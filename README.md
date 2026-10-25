@@ -22,6 +22,23 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 
 `publish/ViolinPassthrough.exe` ができる。
 
+## 使い方
+
+1. ビルドしたフォルダを、ずっと置いておく場所に置く（例: `C:\Tools\ViolinPassthrough`）。
+2. SteamVR を起動した状態で `ViolinPassthrough.exe` を一度起動する。SteamVR に登録され、次回から SteamVR と一緒に自動で起動・終了する。
+3. VRChat のアバターメニュー（OSC）でオン/オフする。設定は `%APPDATA%\ViolinPassthrough\config.json`。
+
+| オプション | 意味 |
+|---|---|
+| `--console` | ログをコンソール窓にも出す（通常は窓を出さず、`%APPDATA%\ViolinPassthrough\logs\` にだけ書く） |
+| `--config PATH` | 設定ファイルの場所を変える |
+| `--unregister` | SteamVR の自動起動とマニフェストの登録を解除して終了する（SteamVR の起動が必要） |
+| `--help` | オプションの説明 |
+
+- SteamVR が起動していないときに起動すると、SteamVR が起動するまで待つ（SteamVR を勝手に起動しない）。
+- 多重起動はしない（2つ目はすぐ終了する）。
+- フォルダを移動したら、移動先で一度起動すると登録し直す。
+
 ## 設定
 
 `%APPDATA%\ViolinPassthrough\config.json`（初回起動時に `resources/config.default.json` がコピーされる）。保存すると1秒以内に反映される。

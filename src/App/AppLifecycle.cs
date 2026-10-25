@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using Valve.VR;
 using ViolinPassthrough.Logging;
 
@@ -24,14 +26,21 @@ public interface IAppLifecycle
 }
 
 /// <summary>
-/// OpenVR の初期化、VREvent の処理、終了処理。
+/// OpenVR の初期化、VREvent の処理、終了処理、マニフェスト登録。
 /// OpenVR を呼ぶのは、このクラスと MaskOverlay だけにする。
 /// </summary>
 public sealed class AppLifecycle : IAppLifecycle, IDisposable
 {
+    /// <summary>manifest.vrmanifest の app_key。</summary>
+    public const string AppKey = "local.violinpassthrough";
+
+    public const string ManifestFileName = "manifest.vrmanifest";
+
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan ServerCheckInterval = TimeSpan.FromSeconds(5);
     private static readonly uint EventSize = (uint)Marshal.SizeOf<VREvent_t>();
 
+    private readonly Stopwatch _sinceServerCheck = Stopwatch.StartNew();
     private bool _initialized;
 
     /// <summary>
@@ -98,7 +107,98 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
             }
         }
 
+        if (_sinceServerCheck.Elapsed >= ServerCheckInterval)
+        {
+            _sinceServerCheck.Restart();
+            if (!IsServerRunning())
+            {
+                // SteamVR が落ちたときは VREvent_Quit が来ないので、プロセスの有無で判断する。
+                Log.Warn("SteamVR server (vrserver) is no longer running.");
+                result |= AppEvents.QuitRequested;
+            }
+        }
+
         return result;
+    }
+
+    /// <summary>
+    /// マニフェストを SteamVR に登録し、初回は自動起動を有効にする。
+    /// 登録済みなら何もしない（ユーザーが SteamVR の設定で自動起動を切っていたら、その設定を尊重する）。
+    /// 別の場所から登録されていたら（フォルダを移動した場合）、古い登録を消して登録し直す。
+    /// </summary>
+    public void RegisterManifest(string manifestPath, string executablePath)
+    {
+        var apps = OpenVR.Applications;
+        if (!_initialized || apps is null)
+        {
+            Log.Error("Cannot register the manifest: IVRApplications is not available.");
+            return;
+        }
+
+        if (!File.Exists(manifestPath))
+        {
+            Log.Error($"Manifest not found: {manifestPath}");
+            return;
+        }
+
+        if (apps.IsApplicationInstalled(AppKey))
+        {
+            var registeredBinary = GetRegisteredBinaryPath(apps);
+            if (registeredBinary is null || SamePath(registeredBinary, executablePath))
+            {
+                Log.Info($"Already registered with SteamVR (auto launch: {apps.GetApplicationAutoLaunch(AppKey)}).");
+                return;
+            }
+
+            Log.Info($"Registered from another location ({registeredBinary}); re-registering from {executablePath}.");
+            var oldManifest = Path.Combine(Path.GetDirectoryName(registeredBinary) ?? string.Empty, ManifestFileName);
+            CheckApplications(apps, apps.RemoveApplicationManifest(oldManifest), $"RemoveApplicationManifest({oldManifest})");
+        }
+
+        if (!CheckApplications(apps, apps.AddApplicationManifest(manifestPath, false), "AddApplicationManifest"))
+        {
+            return;
+        }
+
+        if (CheckApplications(apps, apps.SetApplicationAutoLaunch(AppKey, true), "SetApplicationAutoLaunch"))
+        {
+            Log.Info($"Registered {manifestPath} with SteamVR and enabled auto launch.");
+        }
+    }
+
+    /// <summary>自動起動を止め、マニフェストの登録を消す（--unregister）。</summary>
+    public void UnregisterManifest(string manifestPath)
+    {
+        var apps = OpenVR.Applications;
+        if (!_initialized || apps is null)
+        {
+            Log.Error("Cannot unregister the manifest: IVRApplications is not available.");
+            return;
+        }
+
+        var manifests = new List<string> { manifestPath };
+        if (apps.IsApplicationInstalled(AppKey))
+        {
+            CheckApplications(apps, apps.SetApplicationAutoLaunch(AppKey, false), "SetApplicationAutoLaunch(false)");
+
+            // 別の場所から登録されている場合は、そちらのマニフェストも消す。
+            if (GetRegisteredBinaryPath(apps) is { } registered)
+            {
+                var registeredManifest = Path.Combine(Path.GetDirectoryName(registered) ?? string.Empty, ManifestFileName);
+                if (!SamePath(registeredManifest, manifestPath))
+                {
+                    manifests.Add(registeredManifest);
+                }
+            }
+        }
+
+        foreach (var manifest in manifests)
+        {
+            if (CheckApplications(apps, apps.RemoveApplicationManifest(manifest), $"RemoveApplicationManifest({manifest})"))
+            {
+                Log.Info($"Unregistered {manifest} from SteamVR.");
+            }
+        }
     }
 
     /// <summary>VREvent_Quit への応答。この後すぐにオーバーレイを破棄して終了すること。</summary>
@@ -159,4 +259,58 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
 
     private static string Describe(EVRInitError error) =>
         $"{OpenVR.GetStringForHmdError(error)} ({error})";
+
+    private static bool CheckApplications(CVRApplications apps, EVRApplicationError error, string operation)
+    {
+        if (error == EVRApplicationError.None)
+        {
+            return true;
+        }
+
+        Log.Error($"{operation} failed: {apps.GetApplicationsErrorNameFromEnum(error)} ({(int)error})");
+        return false;
+    }
+
+    private static string? GetRegisteredBinaryPath(CVRApplications apps)
+    {
+        var buffer = new StringBuilder(2048);
+        var error = EVRApplicationError.None;
+        apps.GetApplicationPropertyString(AppKey, EVRApplicationProperty.BinaryPath_String, buffer, (uint)buffer.Capacity, ref error);
+        if (error != EVRApplicationError.None)
+        {
+            Log.Debug($"Could not read the registered binary path: {apps.GetApplicationsErrorNameFromEnum(error)}");
+            return null;
+        }
+
+        var path = buffer.ToString();
+        return path.Length == 0 ? null : path;
+    }
+
+    private static bool SamePath(string a, string b)
+    {
+        try
+        {
+            return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsServerRunning()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return true;
+        }
+
+        var processes = Process.GetProcessesByName("vrserver");
+        foreach (var process in processes)
+        {
+            process.Dispose();
+        }
+
+        return processes.Length > 0;
+    }
 }

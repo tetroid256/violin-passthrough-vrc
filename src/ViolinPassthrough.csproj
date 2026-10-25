@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!-- SteamVR から自動起動されるときにコンソール窓を出さない（ログを見たいときは console オプション）。LibraryImport のため unsafe を許可。 -->
+    <OutputType>WinExe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Version>1.0.0</Version>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -22,11 +25,17 @@
     <None Include="../resources/config.default.json" Link="config.default.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- SteamVR に登録するマニフェスト。exe と同じフォルダに置く。 -->
+  <ItemGroup>
+    <None Include="../resources/manifest.vrmanifest" Link="manifest.vrmanifest" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <!-- OpenVR 公式バインディング（third_party/openvr、バージョンは README を参照） -->
   <ItemGroup>
     <Compile Include="../third_party/openvr/openvr_api.cs" Link="OpenVR/openvr_api.cs" />
     <None Include="../third_party/openvr/win64/openvr_api.dll" Link="openvr_api.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="VRChat.OSCQuery" Version="0.0.7" />
   </ItemGroup>
