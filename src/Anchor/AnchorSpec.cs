@@ -13,3 +13,13 @@ public sealed record HmdAnchorSpec : AnchorSpec
 {
     public override IAnchor CreateAnchor() => new HmdAnchor();
 }
+
+public sealed record WorldAnchorSpec(TrackingUniverse Universe) : AnchorSpec
+{
+    public override IAnchor CreateAnchor() => new WorldAnchor(Universe);
+}
+
+public sealed record DeviceAnchorSpec(DeviceRole? Role, string? Serial, LostBehavior OnLost) : AnchorSpec
+{
+    public override IAnchor CreateAnchor() => new DeviceAnchor(Role, Serial, OnLost);
+}

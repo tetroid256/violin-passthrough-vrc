@@ -71,17 +71,32 @@ public sealed class RegionConfig
 
 public sealed class AnchorConfig
 {
-    /// <summary>"hmd"。</summary>
+    /// <summary>"hmd" / "world" / "device"。</summary>
     public string Type { get; set; } = "hmd";
+
+    /// <summary>world: "standing"（既定）/ "seated"。</summary>
+    public string? Universe { get; set; }
+
+    /// <summary>device: "leftHand" / "rightHand"。serial とどちらか一方。</summary>
+    public string? Role { get; set; }
+
+    /// <summary>device: トラッカーなどのシリアル番号。role とどちらか一方。</summary>
+    public string? Serial { get; set; }
+
+    /// <summary>device: 見失ったとき "hold"（既定。最後の場所に置いておく）/ "hide"（隠す）。</summary>
+    public string? OnLost { get; set; }
 }
 
 public sealed class ShapeConfig
 {
-    /// <summary>"ellipse" / "roundedRect"。</summary>
+    /// <summary>"ellipse" / "roundedRect" / "polygon"。</summary>
     public string Type { get; set; } = "ellipse";
 
     /// <summary>roundedRect の角の半径（メートル）。</summary>
     public double? CornerRadius { get; set; }
+
+    /// <summary>polygon の頂点 [[x, y], ...]。幅・高さに対する割合で、中心が 0、範囲は -0.5〜0.5（+x 右、+y 上）。</summary>
+    public double[][]? Vertices { get; set; }
 }
 
 public sealed class OscConfig

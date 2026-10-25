@@ -75,3 +75,14 @@ OSCQuery がうまく動かないとき（フォールバック）:
    - [ ] **SteamVR を起動するだけで、本アプリが立ち上がる**（ログに新しい `starting` の行が出る。VRChat のトグルが効く）。
    - [ ] SteamVR が異常終了したとき（タスクマネージャーで vrserver を終了するなど）も、5 秒以内に本アプリが終了する。
 4. 自動起動をやめたいとき: SteamVR の設定で Violin Passthrough をオフにする（本アプリは再びオンにしない）。登録ごと消すときは SteamVR を起動した状態で `ViolinPassthrough.exe --unregister` を実行する。
+
+## Phase 5: 拡張（複数領域・Polygon・WorldAnchor・DeviceAnchor）
+
+どれも `debugVisible: true` で形と位置を確かめてから、キー色で抜けを確認する。
+
+- [ ] **複数領域とプリセット**: `activePreset: "whole"`（または OSC で Preset=1）で fingerboard と body の2つの窓が出る。2つの窓が重なっても、重なった部分も抜ける。
+- [ ] **Polygon**: fingerboard の `shape` を `{ "type": "polygon", "vertices": [[-0.5, -0.5], [-0.2, -0.5], [0.5, 0.3], [0.5, 0.5], [0.2, 0.5], [-0.5, -0.3]] }` にすると、左下から右上へ斜めに長い形になる（**上下が逆に見えたら教えてください**。テクスチャの行の向きの確認）。
+- [ ] **WorldAnchor**: 1つの領域の `anchor` を `{ "type": "world" }`、`position` を `[0, 1.0, -0.5]`、`rotationEulerDeg` を `[0, 0, 0]` にすると、頭を動かしても部屋の同じ場所（床の中心から高さ 1m、前に 0.5m）に窓が残る。
+- [ ] **DeviceAnchor**: `anchor` を `{ "type": "device", "role": "leftHand" }`、`position` を `[0, 0, -0.1]` にすると、窓が左手（ハンドトラッキングでは VD のエミュレートしたコントローラー）に付いて動く。
+  - [ ] 手を視界の外に出して見失わせると、`onLost: "hold"` では最後の場所に残り、`"hide"` では消える。手が戻ると再び追従する。
+- [ ] DeviceAnchor を使っていても、HMD 基準の領域だけのときと比べてフレームレートが落ちない（毎フレームの姿勢取得は DeviceAnchor があるときだけ行う）。

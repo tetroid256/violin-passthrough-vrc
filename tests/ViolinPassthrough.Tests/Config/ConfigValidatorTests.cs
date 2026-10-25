@@ -184,6 +184,81 @@ public class ConfigValidatorTests
         }
     }
 
+    private static ConfigParseResult ParseWithFingerboard(string anchor, string shape) =>
+        ConfigValidator.Parse(TestConfigs.DefaultWith(
+            "\"anchor\": { \"type\": \"hmd\" },\n      \"shape\": { \"type\": \"ellipse\" }",
+            $"\"anchor\": {anchor},\n      \"shape\": {shape}"));
+
+    [Fact]
+    public void Polygon_VerticesAreScaledByWidthAndHeight()
+    {
+        var result = ParseWithFingerboard("{ \"type\": \"hmd\" }", "{ \"type\": \"polygon\", \"vertices\": [[-0.5, -0.5], [0.5, -0.2], [0.3, 0.5]] }");
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        var shape = Assert.IsType<PolygonShape>(result.Config!.Regions[0].Shape);
+        Assert.Equal(new[] { (-0.225, -0.125), (0.225, -0.05), (0.135, 0.125) }, shape.Vertices.Select(v => (Math.Round(v.X, 9), Math.Round(v.Y, 9))));
+    }
+
+    [Theory]
+    [InlineData("{ \"type\": \"polygon\" }", "at least 3")]
+    [InlineData("{ \"type\": \"polygon\", \"vertices\": [[0, 0], [0.1, 0]] }", "at least 3")]
+    [InlineData("{ \"type\": \"polygon\", \"vertices\": [[0, 0], [0.6, 0], [0, 0.1]] }", "vertices[1]")]
+    [InlineData("{ \"type\": \"polygon\", \"vertices\": [[0, 0], [0.1], [0, 0.1]] }", "vertices[1]")]
+    [InlineData("{ \"type\": \"polygon\", \"vertices\": [[0, 0], null, [0, 0.1]] }", "vertices[1]")]
+    [InlineData("{ \"type\": \"polygon\", \"vertices\": [[0, 0], [0.1, 0.1], [0.2, 0.2]] }", "enclose an area")]
+    [InlineData("{ \"type\": \"polygon\", \"cornerRadius\": 0.1, \"vertices\": [[0, 0], [0.1, 0], [0, 0.1]] }", "cornerRadius")]
+    [InlineData("{ \"type\": \"ellipse\", \"vertices\": [[0, 0], [0.1, 0], [0, 0.1]] }", "vertices is only valid")]
+    public void Polygon_InvalidDefinitions(string shape, string expected)
+    {
+        var result = ParseWithFingerboard("{ \"type\": \"hmd\" }", shape);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains(expected, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("{ \"type\": \"world\" }", TrackingUniverse.Standing)]
+    [InlineData("{ \"type\": \"world\", \"universe\": \"standing\" }", TrackingUniverse.Standing)]
+    [InlineData("{ \"type\": \"world\", \"universe\": \"Seated\" }", TrackingUniverse.Seated)]
+    public void WorldAnchor_IsParsed(string anchor, TrackingUniverse universe)
+    {
+        var result = ParseWithFingerboard(anchor, "{ \"type\": \"ellipse\" }");
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Equal(new WorldAnchorSpec(universe), result.Config!.Regions[0].Anchor);
+    }
+
+    [Theory]
+    [InlineData("{ \"type\": \"device\", \"role\": \"leftHand\" }", DeviceRole.LeftHand, null, LostBehavior.Hold)]
+    [InlineData("{ \"type\": \"device\", \"role\": \"RightHand\", \"onLost\": \"hide\" }", DeviceRole.RightHand, null, LostBehavior.Hide)]
+    [InlineData("{ \"type\": \"device\", \"serial\": \"LHR-ABC\", \"onLost\": \"hold\" }", null, "LHR-ABC", LostBehavior.Hold)]
+    public void DeviceAnchor_IsParsed(string anchor, DeviceRole? role, string? serial, LostBehavior onLost)
+    {
+        var result = ParseWithFingerboard(anchor, "{ \"type\": \"ellipse\" }");
+
+        Assert.True(result.Success, string.Join("\n", result.Errors));
+        Assert.Equal(new DeviceAnchorSpec(role, serial, onLost), result.Config!.Regions[0].Anchor);
+    }
+
+    [Theory]
+    [InlineData("{ \"type\": \"device\" }", "exactly one")]
+    [InlineData("{ \"type\": \"device\", \"role\": \"leftHand\", \"serial\": \"x\" }", "exactly one")]
+    [InlineData("{ \"type\": \"device\", \"role\": \"foot\" }", "anchor.role")]
+    [InlineData("{ \"type\": \"device\", \"serial\": \" \" }", "anchor.serial")]
+    [InlineData("{ \"type\": \"device\", \"role\": \"leftHand\", \"onLost\": \"fade\" }", "anchor.onLost")]
+    [InlineData("{ \"type\": \"device\", \"role\": \"leftHand\", \"universe\": \"seated\" }", "anchor.universe")]
+    [InlineData("{ \"type\": \"world\", \"universe\": \"space\" }", "anchor.universe")]
+    [InlineData("{ \"type\": \"world\", \"role\": \"leftHand\" }", "anchor.role")]
+    [InlineData("{ \"type\": \"hmd\", \"onLost\": \"hide\" }", "anchor.onLost")]
+    [InlineData("{ \"type\": \"hmd\", \"universe\": \"seated\" }", "anchor.universe")]
+    public void Anchor_InvalidDefinitions(string anchor, string expected)
+    {
+        var result = ParseWithFingerboard(anchor, "{ \"type\": \"ellipse\" }");
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains(expected, StringComparison.Ordinal));
+    }
+
     [Fact]
     public void MissingOptionalFields_UseDefaults()
     {

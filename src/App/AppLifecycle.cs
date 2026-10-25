@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Valve.VR;
+using ViolinPassthrough.Anchor;
 using ViolinPassthrough.Logging;
 
 namespace ViolinPassthrough.App;
@@ -23,6 +24,9 @@ public interface IAppLifecycle
 {
     /// <summary>溜まっている VREvent をすべて処理する。</summary>
     AppEvents PollEvents();
+
+    /// <summary>今のトラッキング情報（standing 空間）。デバイス追従のアンカーがあるときだけ毎フレーム呼ぶ。</summary>
+    TrackingSnapshot GetTrackingSnapshot();
 }
 
 /// <summary>
@@ -38,9 +42,13 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
 
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan ServerCheckInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan SerialRefreshInterval = TimeSpan.FromSeconds(10);
     private static readonly uint EventSize = (uint)Marshal.SizeOf<VREvent_t>();
 
     private readonly Stopwatch _sinceServerCheck = Stopwatch.StartNew();
+    private readonly Stopwatch _sinceSerialRefresh = new();
+    private readonly TrackedDevicePose_t[] _poses = new TrackedDevicePose_t[OpenVR.k_unMaxTrackedDeviceCount];
+    private IReadOnlyDictionary<string, uint>? _serials;
     private bool _initialized;
 
     /// <summary>
@@ -103,6 +111,7 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
                 case EVREventType.VREvent_TrackedDeviceDeactivated:
                 case EVREventType.VREvent_TrackedDeviceRoleChanged:
                     result |= AppEvents.DevicesChanged;
+                    _serials = null;
                     break;
             }
         }
@@ -119,6 +128,41 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
         }
 
         return result;
+    }
+
+    public TrackingSnapshot GetTrackingSnapshot()
+    {
+        var system = OpenVR.System;
+        if (!_initialized || system is null)
+        {
+            return new TrackingSnapshot(
+                TrackingUniverse.Standing,
+                Array.Empty<DevicePose>(),
+                TrackingSnapshot.InvalidDeviceIndex,
+                TrackingSnapshot.InvalidDeviceIndex,
+                new Dictionary<string, uint>());
+        }
+
+        system.GetDeviceToAbsoluteTrackingPose(ETrackingUniverseOrigin.TrackingUniverseStanding, 0, _poses);
+        var poses = new DevicePose[_poses.Length];
+        for (var i = 0; i < _poses.Length; i++)
+        {
+            poses[i] = new DevicePose(_poses[i].bDeviceIsConnected, _poses[i].bPoseIsValid, FromHmdMatrix(_poses[i].mDeviceToAbsoluteTracking));
+        }
+
+        // シリアル番号はデバイスの接続が変わったときと、念のため一定間隔で取り直す。
+        if (_serials is null || _sinceSerialRefresh.Elapsed >= SerialRefreshInterval)
+        {
+            _serials = ReadSerials(system);
+            _sinceSerialRefresh.Restart();
+        }
+
+        return new TrackingSnapshot(
+            TrackingUniverse.Standing,
+            poses,
+            system.GetTrackedDeviceIndexForControllerRole(ETrackedControllerRole.LeftHand),
+            system.GetTrackedDeviceIndexForControllerRole(ETrackedControllerRole.RightHand),
+            _serials);
     }
 
     /// <summary>
@@ -259,6 +303,35 @@ public sealed class AppLifecycle : IAppLifecycle, IDisposable
 
     private static string Describe(EVRInitError error) =>
         $"{OpenVR.GetStringForHmdError(error)} ({error})";
+
+    internal static Pose3x4 FromHmdMatrix(HmdMatrix34_t m) => new(
+        m.m0, m.m1, m.m2, m.m3,
+        m.m4, m.m5, m.m6, m.m7,
+        m.m8, m.m9, m.m10, m.m11);
+
+    private static Dictionary<string, uint> ReadSerials(CVRSystem system)
+    {
+        var serials = new Dictionary<string, uint>(StringComparer.OrdinalIgnoreCase);
+        var buffer = new StringBuilder(256);
+        for (uint i = 0; i < OpenVR.k_unMaxTrackedDeviceCount; i++)
+        {
+            if (!system.IsTrackedDeviceConnected(i))
+            {
+                continue;
+            }
+
+            var error = ETrackedPropertyError.TrackedProp_Success;
+            buffer.Clear();
+            system.GetStringTrackedDeviceProperty(i, ETrackedDeviceProperty.Prop_SerialNumber_String, buffer, (uint)buffer.Capacity, ref error);
+            if (error == ETrackedPropertyError.TrackedProp_Success && buffer.Length > 0)
+            {
+                serials.TryAdd(buffer.ToString(), i);
+            }
+        }
+
+        Log.Debug($"Tracked devices: {string.Join(", ", serials.Select(s => $"{s.Value}={s.Key}"))}");
+        return serials;
+    }
 
     private static bool CheckApplications(CVRApplications apps, EVRApplicationError error, string operation)
     {

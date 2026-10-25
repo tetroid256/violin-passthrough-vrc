@@ -71,3 +71,75 @@ public sealed record RoundedRectShape : MaskShape
 
     private static double Square(double v) => v * v;
 }
+
+/// <summary>
+/// 多角形（頂点はメートル、板の中心が原点）。自己交差する場合は偶奇規則で内外を決める。
+/// </summary>
+public sealed record PolygonShape : MaskShape
+{
+    public PolygonShape(IReadOnlyList<(double X, double Y)> vertices)
+    {
+        if (vertices.Count < 3)
+        {
+            throw new ArgumentException("A polygon needs at least 3 vertices.", nameof(vertices));
+        }
+
+        Vertices = vertices.ToArray();
+    }
+
+    public IReadOnlyList<(double X, double Y)> Vertices { get; }
+
+    public override double SignedDistance(double x, double y)
+    {
+        var minSquared = double.MaxValue;
+        var inside = false;
+        var n = Vertices.Count;
+        for (int i = 0, j = n - 1; i < n; j = i++)
+        {
+            var (ax, ay) = Vertices[j];
+            var (bx, by) = Vertices[i];
+
+            // 辺 a→b までの距離。
+            var ex = bx - ax;
+            var ey = by - ay;
+            var lengthSquared = ex * ex + ey * ey;
+            var t = lengthSquared > 0 ? Math.Clamp(((x - ax) * ex + (y - ay) * ey) / lengthSquared, 0, 1) : 0;
+            var dx = x - (ax + t * ex);
+            var dy = y - (ay + t * ey);
+            minSquared = Math.Min(minSquared, dx * dx + dy * dy);
+
+            // 偶奇規則（右向きの半直線と交わる回数）。
+            if ((ay > y) != (by > y) && x < ax + (y - ay) * ex / ey)
+            {
+                inside = !inside;
+            }
+        }
+
+        var distance = Math.Sqrt(minSquared);
+        return inside ? -distance : distance;
+    }
+
+    public override MaskShape Inflate(double margin) => margin == 0 ? this : new OffsetShape(this, margin);
+
+    public bool Equals(PolygonShape? other) =>
+        other is not null && Vertices.SequenceEqual(other.Vertices);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        foreach (var vertex in Vertices)
+        {
+            hash.Add(vertex);
+        }
+
+        return hash.ToHashCode();
+    }
+}
+
+/// <summary>別の形状を外側に一定の距離だけ広げた形状（角は丸くなる）。</summary>
+public sealed record OffsetShape(MaskShape Inner, double Offset) : MaskShape
+{
+    public override double SignedDistance(double x, double y) => Inner.SignedDistance(x, y) - Offset;
+
+    public override MaskShape Inflate(double margin) => new OffsetShape(Inner, Offset + margin);
+}

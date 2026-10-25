@@ -220,12 +220,96 @@ public static partial class ConfigValidator
             return new HmdAnchorSpec();
         }
 
-        switch (anchor.Type?.ToLowerInvariant())
+        var before = errors.Count;
+        var type = anchor.Type?.ToLowerInvariant();
+        void Forbid(string? value, string name, string validFor)
+        {
+            if (value is not null)
+            {
+                errors.Add($"{label}: anchor.{name} is only valid for {validFor} anchors.");
+            }
+        }
+
+        switch (type)
         {
             case "hmd":
-                return new HmdAnchorSpec();
+                Forbid(anchor.Universe, "universe", "world");
+                Forbid(anchor.Role, "role", "device");
+                Forbid(anchor.Serial, "serial", "device");
+                Forbid(anchor.OnLost, "onLost", "device");
+                return errors.Count == before ? new HmdAnchorSpec() : null;
+
+            case "world":
+            {
+                Forbid(anchor.Role, "role", "device");
+                Forbid(anchor.Serial, "serial", "device");
+                Forbid(anchor.OnLost, "onLost", "device");
+                TrackingUniverse universe;
+                switch (anchor.Universe?.ToLowerInvariant())
+                {
+                    case null:
+                    case "standing":
+                        universe = TrackingUniverse.Standing;
+                        break;
+                    case "seated":
+                        universe = TrackingUniverse.Seated;
+                        break;
+                    default:
+                        errors.Add($"{label}: anchor.universe must be \"standing\" or \"seated\" (got \"{anchor.Universe}\").");
+                        return null;
+                }
+
+                return errors.Count == before ? new WorldAnchorSpec(universe) : null;
+            }
+
+            case "device":
+            {
+                Forbid(anchor.Universe, "universe", "world");
+                DeviceRole? role = null;
+                switch (anchor.Role?.ToLowerInvariant())
+                {
+                    case null:
+                        break;
+                    case "lefthand":
+                        role = DeviceRole.LeftHand;
+                        break;
+                    case "righthand":
+                        role = DeviceRole.RightHand;
+                        break;
+                    default:
+                        errors.Add($"{label}: anchor.role must be \"leftHand\" or \"rightHand\" (got \"{anchor.Role}\").");
+                        break;
+                }
+
+                if (anchor.Serial is not null && string.IsNullOrWhiteSpace(anchor.Serial))
+                {
+                    errors.Add($"{label}: anchor.serial must not be empty.");
+                }
+
+                if ((anchor.Role is null) == (anchor.Serial is null))
+                {
+                    errors.Add($"{label}: a device anchor needs exactly one of anchor.role or anchor.serial.");
+                }
+
+                var onLost = LostBehavior.Hold;
+                switch (anchor.OnLost?.ToLowerInvariant())
+                {
+                    case null:
+                    case "hold":
+                        break;
+                    case "hide":
+                        onLost = LostBehavior.Hide;
+                        break;
+                    default:
+                        errors.Add($"{label}: anchor.onLost must be \"hold\" or \"hide\" (got \"{anchor.OnLost}\").");
+                        break;
+                }
+
+                return errors.Count == before ? new DeviceAnchorSpec(role, anchor.Serial, onLost) : null;
+            }
+
             default:
-                errors.Add($"{label}: anchor.type must be \"hmd\" (got \"{anchor.Type}\").");
+                errors.Add($"{label}: anchor.type must be \"hmd\", \"world\" or \"device\" (got \"{anchor.Type}\").");
                 return null;
         }
     }
@@ -233,15 +317,22 @@ public static partial class ConfigValidator
     private static MaskShape? ValidateShape(ShapeConfig? shape, double width, double height, string label, List<string> errors)
     {
         var type = shape?.Type ?? "ellipse";
-        switch (type.ToLowerInvariant())
+        var before = errors.Count;
+        var lower = type.ToLowerInvariant();
+        if (shape?.CornerRadius is not null && lower != "roundedrect")
+        {
+            errors.Add($"{label}: shape.cornerRadius is only valid for roundedRect.");
+        }
+
+        if (shape?.Vertices is not null && lower != "polygon")
+        {
+            errors.Add($"{label}: shape.vertices is only valid for polygon.");
+        }
+
+        switch (lower)
         {
             case "ellipse":
-                if (shape?.CornerRadius is not null)
-                {
-                    errors.Add($"{label}: shape.cornerRadius is only valid for roundedRect.");
-                }
-
-                return new EllipseShape(width / 2, height / 2);
+                return errors.Count == before ? new EllipseShape(width / 2, height / 2) : null;
 
             case "roundedrect":
             {
@@ -249,16 +340,56 @@ public static partial class ConfigValidator
                 if (!double.IsFinite(radius) || radius < 0)
                 {
                     errors.Add($"{label}: shape.cornerRadius must be >= 0 (got {radius}).");
-                    return null;
                 }
 
-                return new RoundedRectShape(width / 2, height / 2, radius);
+                return errors.Count == before ? new RoundedRectShape(width / 2, height / 2, radius) : null;
             }
 
+            case "polygon":
+                return ValidatePolygon(shape?.Vertices, width, height, label, errors);
+
             default:
-                errors.Add($"{label}: shape.type must be \"ellipse\" or \"roundedRect\" (got \"{type}\").");
+                errors.Add($"{label}: shape.type must be \"ellipse\", \"roundedRect\" or \"polygon\" (got \"{type}\").");
                 return null;
         }
+    }
+
+    private static PolygonShape? ValidatePolygon(double[][]? vertices, double width, double height, string label, List<string> errors)
+    {
+        if (vertices is null || vertices.Length < 3)
+        {
+            errors.Add($"{label}: shape.vertices must have at least 3 points ([[x, y], ...]).");
+            return null;
+        }
+
+        var points = new List<(double X, double Y)>(vertices.Length);
+        for (var i = 0; i < vertices.Length; i++)
+        {
+            var v = vertices[i];
+            if (v is null || v.Length != 2 || !double.IsFinite(v[0]) || !double.IsFinite(v[1])
+                || Math.Abs(v[0]) > 0.5 || Math.Abs(v[1]) > 0.5)
+            {
+                errors.Add($"{label}: shape.vertices[{i}] must be [x, y] with -0.5 <= x, y <= 0.5 (fractions of width/height).");
+                return null;
+            }
+
+            points.Add((v[0] * width, v[1] * height));
+        }
+
+        // 面積が無い（一直線に並んでいる）多角形は何も描けない。
+        var area = 0.0;
+        for (int i = 0, j = points.Count - 1; i < points.Count; j = i++)
+        {
+            area += points[j].X * points[i].Y - points[i].X * points[j].Y;
+        }
+
+        if (Math.Abs(area) / 2 < 1e-6 * width * height)
+        {
+            errors.Add($"{label}: shape.vertices must enclose an area.");
+            return null;
+        }
+
+        return new PolygonShape(points);
     }
 
     private static Vec3 ValidateVector(double[]? values, string name, string label, bool required, List<string> errors)

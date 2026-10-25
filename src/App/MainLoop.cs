@@ -124,7 +124,7 @@ public sealed class MainLoop : IDisposable
 
         if (_overlays.RequiresTracking)
         {
-            _overlays.Tick(null);
+            _overlays.Tick(_lifecycle.GetTrackingSnapshot());
         }
 
         return false;

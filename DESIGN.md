@@ -384,4 +384,8 @@ OpenVR の HMD 座標系に従う。単位はメートル。+X が右、+Y が�
 - **コマンドライン**: `--console`（親のコンソールに繋ぐか新しく開いてログを出す）、`--config PATH`、`--unregister`、`--help`。
 - **ログ**: `%APPDATA%\ViolinPassthrough\logs\ViolinPassthrough-yyyyMMdd.log`。日付で分け、7 日より古いものは消す。実行中でも開けるように共有モードで書く。
 - **多重起動防止**: Mutex 名は `Local\ViolinPassthrough.SingleInstance`。前のインスタンスが異常終了して放棄された Mutex は、そのまま引き継ぐ。
+- **Polygon の頂点の単位**: 板の幅・高さに対する割合（中心 0、範囲 -0.5〜0.5）。他の形状と同じく `widthMeters` × `heightMeters` の箱に収まり、大きさを変えると形もそのまま拡大縮小する。余白は多角形から一定の距離（角は丸くなる）。自己交差は偶奇規則。面積のない多角形はエラー。
+- **WorldAnchor**: `universe` で standing（既定）/ seated を選ぶ。位置と回転はその空間の座標。
+- **DeviceAnchor**: `role`（leftHand / rightHand）か `serial`（トラッカーなど）のどちらか一方で選ぶ。見えている間は `SetOverlayTransformTrackedDeviceRelative` で置き（SteamVR が追従させる）、`onLost: hold` で見失ったら最後の姿勢 × 相対姿勢を `SetOverlayTransformAbsolute` で置く。`hide` なら隠す。一度も見えていないときは、どちらでも隠す。ロールの付け替え（左右の入れ替わり）にも追従する。
+- **トラッキング情報の取得**: DeviceAnchor があるときだけ、毎フレーム `GetDeviceToAbsoluteTrackingPose`（standing）とロールの解決を行う。シリアル番号はデバイスの接続が変わったときと 10 秒ごとに取り直す。
 - **メインループの例外**: 1フレームの処理で想定外の例外が出ても、ログに出して次のフレームへ進む（常駐アプリなので落とさない）。

@@ -55,9 +55,9 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `activePreset` | 起動時のプリセット。保存時に値が変わったら反映 |
 | `presets` | プリセット名 → 表示する領域 ID の配列。書いた順番が OSC の番号（0, 1, ...）になる |
 | `regions[].id` | 領域 ID（英数字・`_`・`-`、64 文字まで） |
-| `regions[].anchor` | `{ "type": "hmd" }`（HMD 基準） |
-| `regions[].shape` | `{ "type": "ellipse" }` / `{ "type": "roundedRect", "cornerRadius": 0.05 }`（メートル） |
-| `regions[].position` | アンカー基準の板の中心 `[x, y, z]`（メートル。+X 右、+Y 上、-Z 前） |
+| `regions[].anchor` | 基準座標系。下の「アンカー」参照 |
+| `regions[].shape` | `{ "type": "ellipse" }` / `{ "type": "roundedRect", "cornerRadius": 0.05 }`（メートル）/ `{ "type": "polygon", "vertices": [[x, y], ...] }`（下の「多角形」参照） |
+| `regions[].position` | アンカー基準の板の中心 `[x, y, z]`（メートル。HMD 基準なら +X 右、+Y 上、-Z 前） |
 | `regions[].rotationEulerDeg` | `[pitch, yaw, roll]`（度）。pitch 正で板が上を向く、yaw 正で板が右を向く、roll 正で板の右端が上がる。回す順番は roll → pitch → yaw |
 | `regions[].widthMeters` / `heightMeters` | 形状の幅・高さ（メートル） |
 | `regions[].marginMeters` | 縁に足す余白。板の実寸は `幅 + 2×余白` |
@@ -66,6 +66,22 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `osc.vrchatSendHost` / `vrchatSendPort` | 状態を送り返す先（VRChat の受信ポート） |
 | `osc.parameters.*` | アバターパラメータ名（`enabled` = Bool、`preset` = Int、`debug` = Bool）。変えると OSC を再起動する |
 | `logLevel` | `Debug` / `Info` / `Warning` / `Error` |
+
+### アンカー
+
+| 設定 | 意味 |
+|---|---|
+| `{ "type": "hmd" }` | HMD 基準（既定）。頭に固定 |
+| `{ "type": "world", "universe": "standing" }` | ルーム空間に固定。`position` / `rotationEulerDeg` はプレイエリアの座標（standing は床の中心が原点、seated は着座位置が原点） |
+| `{ "type": "device", "role": "leftHand", "onLost": "hold" }` | 手に追従。`role` は `leftHand` / `rightHand`。ハンドトラッキングでは VD がエミュレートするコントローラーの姿勢になる |
+| `{ "type": "device", "serial": "LHR-XXXXXXXX", "onLost": "hide" }` | トラッカーなどにシリアル番号で追従。シリアル番号は `logLevel: "Debug"` にするとログの `Tracked devices:` に出る |
+
+`onLost`: デバイスを見失ったとき `hold`（既定。最後に見えていた場所に置いておく）/ `hide`（隠す）。一度も見えていないときは、どちらでも隠す。
+
+### 多角形
+
+`vertices` は板の幅・高さに対する割合で書く。中心が `[0, 0]`、左下が `[-0.5, -0.5]`、右上が `[0.5, 0.5]`（+x 右、+y 上）。3 点以上。余白（`marginMeters`）は多角形の外側に一定の幅で足す（角は丸くなる）。
+例: 左下から右上へ斜めに長い形 `[[-0.5, -0.5], [-0.2, -0.5], [0.5, 0.3], [0.5, 0.5], [0.2, 0.5], [-0.5, -0.3]]`
 
 ## OSC（VRChat のアバターメニューで切り替え）
 

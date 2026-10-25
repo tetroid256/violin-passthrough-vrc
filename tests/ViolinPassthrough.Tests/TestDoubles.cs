@@ -89,6 +89,21 @@ internal sealed class FakeLifecycle : IAppLifecycle
 {
     public AppEvents NextEvents { get; set; }
 
+    public TrackingSnapshot Snapshot { get; set; } = new(
+        TrackingUniverse.Standing,
+        Array.Empty<DevicePose>(),
+        TrackingSnapshot.InvalidDeviceIndex,
+        TrackingSnapshot.InvalidDeviceIndex,
+        new Dictionary<string, uint>());
+
+    public int SnapshotCount { get; private set; }
+
+    public TrackingSnapshot GetTrackingSnapshot()
+    {
+        SnapshotCount++;
+        return Snapshot;
+    }
+
     public AppEvents PollEvents()
     {
         var events = NextEvents;

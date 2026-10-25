@@ -196,6 +196,26 @@ public class MainLoopTests
     }
 
     [Fact]
+    public void TrackingSnapshot_IsOnlyRequestedForDeviceAnchors()
+    {
+        var h = new Harness();
+        h.Loop.Tick();
+        h.Loop.Tick();
+        Assert.Equal(0, h.Lifecycle.SnapshotCount);
+
+        h.Config.Publish(TestConfigs.Parse(TestConfigs.DefaultWith(
+            "\"anchor\": { \"type\": \"hmd\" },\n      \"shape\": { \"type\": \"ellipse\" }",
+            "\"anchor\": { \"type\": \"device\", \"role\": \"leftHand\" },\n      \"shape\": { \"type\": \"ellipse\" }")));
+        h.Loop.Tick();
+        h["fingerboard"].RequiresTracking = true;
+        h.Loop.Tick();
+
+        Assert.Equal(1, h.Lifecycle.SnapshotCount);
+        Assert.Same(h.Lifecycle.Snapshot, h["fingerboard"].LastTracking);
+        Assert.IsType<ViolinPassthrough.Anchor.DeviceAnchorSpec>(h["fingerboard"].Region!.Anchor);
+    }
+
+    [Fact]
     public void QuitEvent_StopsTheLoop()
     {
         var h = new Harness();
