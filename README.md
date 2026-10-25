@@ -93,7 +93,7 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `/avatar/change` | String | アバター変更。状態は維持し、2 秒間は新しいアバターの既定値を無視してから、現在の状態を送り直す |
 
 起動時・OSC 設定の変更時・アバター変更時、それと設定ファイルで状態が変わったときに、現在の状態を VRChat（既定 127.0.0.1:9000）に送ってメニューの表示を合わせる。
-Bool のパラメータを Int / Float で作ってしまっても受け取れる（0.5 以上 / 0 以外を true とみなす）。
+Bool のパラメータを Int / Float で作ってしまっても受け取れる（Int は 0 以外、Float は 0.5 以上を true とみなす）。
 
 アバター側の設定は DESIGN.md §9 を参照（3つのパラメータを **Synced を外して** Expression Parameters に追加し、メニューに Toggle を置く。アニメーターの変更は不要）。
 

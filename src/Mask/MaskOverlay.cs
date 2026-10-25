@@ -78,6 +78,13 @@ public sealed class MaskOverlay : IMaskOverlay
             _anchorSpec = region.Anchor;
         }
 
+        // トラッキングを使わないアンカーの間は Tick で更新されないので、古い情報を残さない
+        // （後でデバイス追従に戻したときに、昔の姿勢で置かれないように）。
+        if (!_anchor.RequiresTracking)
+        {
+            _lastTracking = null;
+        }
+
         var ok = UploadTexture(region, settings);
 
         var overlay = OpenVR.Overlay;

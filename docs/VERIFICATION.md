@@ -11,14 +11,18 @@
 
 ## Phase 1: 抜け確認
 
+最終版の既定の設定は `startEnabled: false`（起動しても窓は出ない）なので、Phase 1 の確認では一度だけ設定を変える。
+
 1. VD で SteamVR を起動する。
-2. `ViolinPassthrough.exe --console` を実行する（コンソール窓にログが出る。Phase 4 からは引数なしだと窓は出ず、ログはファイルに出る）。
-3. 確認すること:
+2. `ViolinPassthrough.exe --console` を実行する（コンソール窓にログが出る）。ログに `Created ...config.json from the default config.` が出たら、Ctrl+C で一度終了する。
+3. `%APPDATA%\ViolinPassthrough\config.json` を開き、`"startEnabled": false` を `true` にして保存する。
+4. もう一度 `ViolinPassthrough.exe --console` を実行する。
+5. 確認すること:
    - [ ] ログに `OpenVR initialized as an overlay application.` と `[fingerboard] Shown.` が出る。`failed` を含む行が出ない。
    - [ ] VR 内の左下前方に、楕円の「外界が見える窓」が出る。
    - [ ] パススルーを無効にすると、同じ場所にマゼンタの楕円が見える（キー色の確認）。
-4. コンソールで Ctrl+C を押すと、楕円が消えてアプリが終了する。
-5. SteamVR を起動していない状態で exe を起動すると `Waiting for SteamVR` が出て待機し、SteamVR を起動すると窓が出る（SteamVR が勝手に起動しないこと）。
+6. コンソールで Ctrl+C を押すと、楕円が消えてアプリが終了する。
+7. SteamVR を終了した状態で `ViolinPassthrough.exe --console` を起動すると `Waiting for SteamVR` が出て待機し、SteamVR を起動すると窓が出る（SteamVR が勝手に起動しないこと）。
 
 うまくいかないとき:
 - 楕円の縁にマゼンタが残る → VD の Similarity / Smoothness を調整する。
@@ -30,7 +34,7 @@
 設定ファイルは `%APPDATA%\ViolinPassthrough\config.json`（エクスプローラーのアドレス欄に `%APPDATA%\ViolinPassthrough` と入力すると開ける）。初回起動時に既定の設定がコピーされる。項目の意味は README の「設定」を参照。
 
 1. SteamVR を起動してから `ViolinPassthrough.exe --console` を実行する。ログに `Loaded config from ...config.json` が出る。
-2. 既定では `startEnabled: false` なので何も表示されない。
+2. Phase 1 で `startEnabled` を `true` にした場合は `false` に戻してから起動し直す（何も表示されない状態から始める）。
 3. 確認すること（XSOverlay のデスクトップ窓などで config.json を開き、保存するたびに確認する）:
    - [ ] `"debugVisible": true` にして保存すると、1秒以内に **半透明の赤＋白い枠** の楕円が出る（抜けない）。ログに `Config reloaded.` と `Debug display on (config).` が出る。
    - [ ] `position` や `rotationEulerDeg`、`widthMeters` を変えて保存すると、1秒以内に赤い楕円が動く・大きさが変わる。
@@ -70,7 +74,7 @@ OSCQuery がうまく動かないとき（フォールバック）:
 3. 確認すること:
    - [ ] ログに `Registered ...manifest.vrmanifest with SteamVR and enabled auto launch.` が出る（2回目以降は `Already registered with SteamVR (auto launch: True).`）。
    - [ ] SteamVR の設定 → スタートアップ／シャットダウン → 「起動時のオーバーレイアプリを選択」に **Violin Passthrough** があり、オンになっている。
-   - [ ] もう一度 exe をダブルクリックしても2つ目は起動しない（ログに `Another instance is already running.`）。
+   - [ ] もう一度 exe をダブルクリックしても2つ目は起動しない（タスクマネージャーの ViolinPassthrough は1つのまま。`--console` を付けて2つ目を起動すると `Another instance is already running.` が出てすぐ終わる。2つ目はログファイルには書かない）。
    - [ ] **SteamVR を終了すると、本アプリも終了する**（タスクマネージャーから ViolinPassthrough が消える。ログに `Received VREvent_Quit.` → `Acknowledged quit.` → `Violin Passthrough exiting.`）。
    - [ ] **SteamVR を起動するだけで、本アプリが立ち上がる**（ログに新しい `starting` の行が出る。VRChat のトグルが効く）。
    - [ ] SteamVR が異常終了したとき（タスクマネージャーで vrserver を終了するなど）も、5 秒以内に本アプリが終了する。
