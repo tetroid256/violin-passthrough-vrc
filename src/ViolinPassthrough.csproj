@@ -27,5 +27,8 @@
     <Compile Include="../third_party/openvr/openvr_api.cs" Link="OpenVR/openvr_api.cs" />
     <None Include="../third_party/openvr/win64/openvr_api.dll" Link="openvr_api.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="VRChat.OSCQuery" Version="0.0.7" />
+  </ItemGroup>
 
 </Project>

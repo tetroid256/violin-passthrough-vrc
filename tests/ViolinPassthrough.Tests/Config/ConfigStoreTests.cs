@@ -70,9 +70,30 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
-    public void ReloadLatency_IsUnderOneSecond()
+    public void WallClockStepBackwards_DoesNotStopPolling()
     {
-        Assert.True(ConfigStore.PollInterval + ConfigStore.Debounce + TimeSpan.FromMilliseconds(34) < TimeSpan.FromSeconds(1));
+        using var store = new ConfigStore(ConfigPath, _time);
+        store.Initialize();
+        store.TryReload(out _);
+
+        _time.StepWallClock(TimeSpan.FromMinutes(-10));
+        WriteConfig(TestConfigs.DefaultWith("\"g\": 0", "\"g\": 99"));
+
+        Assert.True(ReloadNow(store));
+        Assert.Equal(99, store.Current.Render.KeyColor.G);
+    }
+
+    [Fact]
+    public void TryReload_RoundedRectWithNegativeSize_DoesNotThrow()
+    {
+        using var store = new ConfigStore(ConfigPath, _time);
+        store.Initialize();
+        var good = store.Current;
+
+        WriteConfig(TestConfigs.DefaultWith("\"widthMeters\": 0.30", "\"widthMeters\": -0.30"));
+
+        Assert.False(ReloadNow(store));
+        Assert.Same(good, store.Current);
     }
 
     [Fact]

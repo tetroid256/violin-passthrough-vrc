@@ -2,6 +2,7 @@ using ViolinPassthrough.App;
 using ViolinPassthrough.Config;
 using ViolinPassthrough.Logging;
 using ViolinPassthrough.Mask;
+using ViolinPassthrough.Osc;
 
 namespace ViolinPassthrough;
 
@@ -33,8 +34,8 @@ internal static class Program
         Log.Info($"Initial state: {state}.");
 
         using (var overlays = new MaskOverlaySet(id => new MaskOverlay(id)))
+        using (var loop = new MainLoop(lifecycle, configStore, state, overlays, StartOsc))
         {
-            var loop = new MainLoop(lifecycle, configStore, state, overlays);
             if (loop.Run(cts.Token))
             {
                 lifecycle.AcknowledgeQuit();
@@ -43,5 +44,18 @@ internal static class Program
 
         Log.Info("Violin Passthrough exiting.");
         return 0;
+    }
+
+    private static IOscEndpoint? StartOsc(OscSettings settings)
+    {
+        try
+        {
+            return OscService.Start(settings);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Failed to start OSC", ex);
+            return null;
+        }
     }
 }

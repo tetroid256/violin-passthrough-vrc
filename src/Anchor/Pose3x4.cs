@@ -19,13 +19,18 @@ public readonly record struct Pose3x4(
     public Vec3 Translation => new(M03, M13, M23);
 
     /// <summary>
-    /// 位置とオイラー角（度）から姿勢を作る。
-    /// 回転は右手系で、pitch = X 軸、yaw = Y 軸、roll = Z 軸まわり。
-    /// R = Ry(yaw) * Rx(pitch) * Rz(roll)（板をまず roll、次に pitch、最後に yaw で回す）。
+    /// 位置とオイラー角（度）から板の姿勢を作る。板は XY 平面にあり、表（見える面）は +Z を向く。
+    /// <list type="bullet">
+    /// <item>pitch（X 軸）: 正で板が上を向く（上端が奥へ倒れる）。右手系の X 軸まわりとは符号が逆。</item>
+    /// <item>yaw（Y 軸）: 正で板が右を向く（右手系どおり）。</item>
+    /// <item>roll（Z 軸）: 正で板の右端が上がる（右手系どおり）。</item>
+    /// </list>
+    /// R = Ry(yaw) * Rx(-pitch) * Rz(roll)（板をまず roll、次に pitch、最後に yaw で回す）。
+    /// 視点より下にある板を視点に向けるとき、pitch が正になるようにしている（設計書の初期値の意図）。
     /// </summary>
     public static Pose3x4 FromPositionEuler(Vec3 position, Vec3 eulerDeg)
     {
-        var rx = RotationX(eulerDeg.X);
+        var rx = RotationX(-eulerDeg.X);
         var ry = RotationY(eulerDeg.Y);
         var rz = RotationZ(eulerDeg.Z);
         var r = ry * rx * rz;

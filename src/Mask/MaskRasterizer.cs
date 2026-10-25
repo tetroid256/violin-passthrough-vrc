@@ -138,15 +138,17 @@ public static class MaskRasterizer
             alpha = (byte)Math.Round(coverage * 255);
         }
 
-        // 外側（α=0）の色は使われないが、念のため黒にしておく。
-        return alpha == 0 ? ((byte)0, (byte)0, (byte)0, (byte)0) : (key.R, key.G, key.B, alpha);
+        // 外側（α=0）もキー色にしておく。オーバーレイは premultiplied ではない α で合成され、
+        // テクスチャはフィルタで補間されるので、外側を黒にすると縁に暗い色が混ざって抜けなくなる。
+        return (key.R, key.G, key.B, alpha);
     }
 
     private static (byte R, byte G, byte B, byte A) DebugColor(double distancePixels, double borderPixels)
     {
         if (distancePixels > 0)
         {
-            return (0, 0, 0, 0);
+            // 外側は枠と同じ色の透明（補間で縁が暗くならないように）。
+            return (DebugBorder.R, DebugBorder.G, DebugBorder.B, 0);
         }
 
         return distancePixels > -borderPixels ? DebugBorder : DebugFill;

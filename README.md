@@ -41,16 +41,34 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `regions[].anchor` | `{ "type": "hmd" }`（HMD 基準） |
 | `regions[].shape` | `{ "type": "ellipse" }` / `{ "type": "roundedRect", "cornerRadius": 0.05 }`（メートル） |
 | `regions[].position` | アンカー基準の板の中心 `[x, y, z]`（メートル。+X 右、+Y 上、-Z 前） |
-| `regions[].rotationEulerDeg` | `[pitch, yaw, roll]`（度）。yaw 正で板が右を向く。pitch 正で板の上端が手前に倒れる。roll 正で板の右端が上がる |
+| `regions[].rotationEulerDeg` | `[pitch, yaw, roll]`（度）。pitch 正で板が上を向く、yaw 正で板が右を向く、roll 正で板の右端が上がる。回す順番は roll → pitch → yaw |
 | `regions[].widthMeters` / `heightMeters` | 形状の幅・高さ（メートル） |
 | `regions[].marginMeters` | 縁に足す余白。板の実寸は `幅 + 2×余白` |
-| `osc.*` | OSC の設定（Phase 3） |
+| `osc.useOscQuery` | OSCQuery でサービスを広告して受信する（推奨）。false なら `fallbackListenPort` で待ち受ける |
+| `osc.fallbackListenPort` | OSCQuery を使わない（使えない）ときの受信ポート。VRChat の送信先をこのポートにする必要がある |
+| `osc.vrchatSendHost` / `vrchatSendPort` | 状態を送り返す先（VRChat の受信ポート） |
+| `osc.parameters.*` | アバターパラメータ名（`enabled` = Bool、`preset` = Int、`debug` = Bool）。変えると OSC を再起動する |
 | `logLevel` | `Debug` / `Info` / `Warning` / `Error` |
+
+## OSC（VRChat のアバターメニューで切り替え）
+
+| アドレス | 型 | 動作 |
+|---|---|---|
+| `/avatar/parameters/HandPassthrough` | Bool | 有効/無効 |
+| `/avatar/parameters/HandPassthroughPreset` | Int | プリセット番号（`presets` に書いた順。0 = fingerboard, 1 = whole） |
+| `/avatar/parameters/HandPassthroughDebug` | Bool | デバッグ表示 |
+| `/avatar/change` | String | アバター変更。状態は維持し、2 秒間は新しいアバターの既定値を無視してから、現在の状態を送り直す |
+
+起動時・OSC 設定の変更時・アバター変更時、それと設定ファイルで状態が変わったときに、現在の状態を VRChat（既定 127.0.0.1:9000）に送ってメニューの表示を合わせる。
+Bool のパラメータを Int / Float で作ってしまっても受け取れる（0.5 以上 / 0 以外を true とみなす）。
+
+アバター側の設定は DESIGN.md §9 を参照（3つのパラメータを **Synced を外して** Expression Parameters に追加し、メニューに Toggle を置く。アニメーターの変更は不要）。
 
 ## 依存ライブラリ
 
 | ライブラリ | バージョン | 取得元 |
 |---|---|---|
+| VRChat.OSCQuery（NuGet） | 0.0.7 | [vrchat-community/vrc-oscquery-lib](https://github.com/vrchat-community/vrc-oscquery-lib)。OSCQuery の広告（mDNS）と HTTP サーバー |
 | OpenVR (`openvr_api.cs`, `openvr_api.dll` win64) | **v2.15.6**（SDK 2.15.6） | [ValveSoftware/openvr](https://github.com/ValveSoftware/openvr) のタグ `v2.15.6`。`third_party/openvr/` に同梱。ライセンスは `third_party/openvr/LICENSE`（BSD-3-Clause） |
 
 `openvr_api.dll` の SHA-256: `bab8ac6ef64e68a9ca53315b0014d131088584b2efdfa6db511d67ec03cfcb4a`

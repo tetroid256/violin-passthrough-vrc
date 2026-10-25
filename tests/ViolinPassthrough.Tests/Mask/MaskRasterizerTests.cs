@@ -40,14 +40,14 @@ public class MaskRasterizerTests
 
         Assert.Equal(512, tex.Width);
         Assert.Equal((255, 0, 255, 255), tex.GetPixel(tex.Width / 2, tex.Height / 2));
-        Assert.Equal((0, 0, 0, 0), tex.GetPixel(0, 0));
-        Assert.Equal((0, 0, 0, 0), tex.GetPixel(tex.Width - 1, 0));
-        Assert.Equal((0, 0, 0, 0), tex.GetPixel(0, tex.Height - 1));
-        Assert.Equal((0, 0, 0, 0), tex.GetPixel(tex.Width - 1, tex.Height - 1));
+        Assert.Equal((255, 0, 255, 0), tex.GetPixel(0, 0));
+        Assert.Equal((255, 0, 255, 0), tex.GetPixel(tex.Width - 1, 0));
+        Assert.Equal((255, 0, 255, 0), tex.GetPixel(0, tex.Height - 1));
+        Assert.Equal((255, 0, 255, 0), tex.GetPixel(tex.Width - 1, tex.Height - 1));
     }
 
     [Fact]
-    public void Hard_HasOnlyFullyOpaqueOrFullyTransparentPixels()
+    public void Hard_HasOnlyFullyOpaqueOrFullyTransparentPixels_AllInKeyColor()
     {
         var tex = MaskRasterizer.Rasterize(Region(), Settings());
 
@@ -55,10 +55,8 @@ public class MaskRasterizerTests
         {
             var a = tex.Rgba[i + 3];
             Assert.True(a is 0 or 255, $"Unexpected alpha {a} at pixel {i / 4}");
-            if (a == 255)
-            {
-                Assert.Equal(Magenta, new Rgb(tex.Rgba[i], tex.Rgba[i + 1], tex.Rgba[i + 2]));
-            }
+            // 透明な画素もキー色にする（テクスチャの補間で縁に別の色が混ざらないように）。
+            Assert.Equal(Magenta, new Rgb(tex.Rgba[i], tex.Rgba[i + 1], tex.Rgba[i + 2]));
         }
     }
 
@@ -92,23 +90,36 @@ public class MaskRasterizerTests
     }
 
     [Fact]
-    public void Aa_HasIntermediateAlphaOnlyNearTheEdge()
+    public void Aa_HasIntermediateAlphaOnlyWithinTheEdgeBand()
     {
-        var tex = MaskRasterizer.Rasterize(Region(), Settings(EdgeMode.Aa));
+        var region = Region();
+        var tex = MaskRasterizer.Rasterize(region, Settings(EdgeMode.Aa));
+        var shape = region.EffectiveShape;
+        var texel = region.QuadWidthMeters / tex.Width;
         var partial = 0;
-        for (var i = 0; i < tex.Rgba.Length; i += 4)
+
+        for (var py = 0; py < tex.Height; py++)
         {
-            var a = tex.Rgba[i + 3];
-            if (a is > 0 and < 255)
+            for (var px = 0; px < tex.Width; px++)
             {
+                var (r, g, b, a) = tex.GetPixel(px, py);
+                Assert.Equal(Magenta, new Rgb(r, g, b));
+                if (a is 0 or 255)
+                {
+                    continue;
+                }
+
                 partial++;
-                Assert.Equal(Magenta, new Rgb(tex.Rgba[i], tex.Rgba[i + 1], tex.Rgba[i + 2]));
+                var x = (px + 0.5) * texel - region.QuadWidthMeters / 2;
+                var y = region.QuadHeightMeters / 2 - (py + 0.5) * region.QuadHeightMeters / tex.Height;
+                var distancePixels = shape.SignedDistance(x, y) / texel;
+                Assert.True(
+                    Math.Abs(distancePixels) <= MaskRasterizer.AaWidthPixels / 2 + 0.01,
+                    $"Partial alpha {a} at {distancePixels:0.00}px from the edge");
             }
         }
 
         Assert.True(partial > 0);
-        // 縁は周長 × 約 1.5px 程度。全体の数 % に収まる。
-        Assert.True(partial < tex.Width * tex.Height * 0.03, $"Too many partial pixels: {partial}");
         Assert.Equal(255, tex.GetPixel(tex.Width / 2, tex.Height / 2).A);
         Assert.Equal(0, tex.GetPixel(0, 0).A);
     }
@@ -121,7 +132,7 @@ public class MaskRasterizerTests
 
         Assert.Equal(MaskRasterizer.DebugFill, tex.GetPixel(tex.Width / 2, midRow));
         Assert.Equal(MaskRasterizer.DebugBorder, tex.GetPixel(1, midRow));
-        Assert.Equal((0, 0, 0, 0), tex.GetPixel(0, 0));
+        Assert.Equal((255, 255, 255, 0), tex.GetPixel(0, 0));
         // キー色の画素は1つもない（抜けない）。
         for (var i = 0; i < tex.Rgba.Length; i += 4)
         {

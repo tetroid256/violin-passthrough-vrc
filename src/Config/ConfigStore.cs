@@ -32,8 +32,9 @@ public sealed class ConfigStore : IConfigSource, IDisposable
     private readonly object _gate = new();
     private FileSystemWatcher? _watcher;
     private bool _dirty;
-    private DateTimeOffset _lastChange;
-    private DateTimeOffset _lastPoll;
+    // 時計の巻き戻しの影響を受けないように、単調増加のタイムスタンプで測る。
+    private long _lastChange;
+    private long? _lastPoll;
     private (DateTime WriteTimeUtc, long Length)? _loadedStamp;
     private bool _missingLogged;
 
@@ -117,9 +118,9 @@ public sealed class ConfigStore : IConfigSource, IDisposable
     public bool TryReload(out ResolvedConfig? config)
     {
         config = null;
-        var now = _time.GetUtcNow();
+        var now = _time.GetTimestamp();
 
-        if (now - _lastPoll >= PollInterval)
+        if (_lastPoll is not { } lastPoll || _time.GetElapsedTime(lastPoll, now) >= PollInterval)
         {
             _lastPoll = now;
             if (!Equals(GetStamp(), _loadedStamp))
@@ -130,7 +131,7 @@ public sealed class ConfigStore : IConfigSource, IDisposable
 
         lock (_gate)
         {
-            if (!_dirty || now - _lastChange < Debounce)
+            if (!_dirty || _time.GetElapsedTime(_lastChange, now) < Debounce)
             {
                 return false;
             }
@@ -159,7 +160,7 @@ public sealed class ConfigStore : IConfigSource, IDisposable
         lock (_gate)
         {
             _dirty = true;
-            _lastChange = _time.GetUtcNow();
+            _lastChange = _time.GetTimestamp();
         }
     }
 
@@ -198,7 +199,18 @@ public sealed class ConfigStore : IConfigSource, IDisposable
         // 中身の読み込みに成功したら、正常かどうかに関わらず同じ版は読み直さない。
         _loadedStamp = stamp;
 
-        var result = ConfigValidator.Parse(text);
+        ConfigParseResult result;
+        try
+        {
+            result = ConfigValidator.Parse(text);
+        }
+        catch (Exception ex)
+        {
+            // 検証の漏れで例外が出ても落とさない。
+            Log.Error($"Unexpected error while reading {FilePath}; keeping the previous config", ex);
+            return false;
+        }
+
         if (!result.Success)
         {
             Log.Warn($"Config file {FilePath} is invalid; keeping the previous config:{Environment.NewLine}  - " +

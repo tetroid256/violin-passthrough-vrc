@@ -102,6 +102,11 @@ public class ConfigValidatorTests
     [InlineData("\"activePreset\": \"fingerboard\"", "\"activePreset\": \"nope\"", "activePreset")]
     [InlineData("\"widthMeters\": 0.45", "\"widthMeters\": 0", "widthMeters")]
     [InlineData("\"heightMeters\": 0.25", "\"heightMeters\": -1", "heightMeters")]
+    [InlineData("\"widthMeters\": 0.30", "\"widthMeters\": -0.30", "widthMeters")]
+    [InlineData("\"heightMeters\": 0.20", "\"heightMeters\": -0.20", "heightMeters")]
+    [InlineData("\"widthMeters\": 0.30", "\"widthMeters\": 0", "widthMeters")]
+    [InlineData("\"widthMeters\": 0.45", "\"widthMeters\": 0.60, \"widthMeters\": 0.45", "widthMeters")]
+    [InlineData("\"edgeMode\": \"hard\"", "\"edgeMode\": \"hard\", \"EdgeMode\": \"aa\"", "dgeMode")]
     [InlineData("\"marginMeters\": 0.03\n    },\n    {", "\"marginMeters\": -0.01\n    },\n    {", "marginMeters")]
     [InlineData("\"position\": [-0.15, -0.15, -0.40]", "\"position\": [-0.15, -0.15]", "position")]
     [InlineData("\"position\": [-0.15, -0.15, -0.40]", "\"position\": null", "position")]
@@ -129,6 +134,54 @@ public class ConfigValidatorTests
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains(expectedInError, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RegionIdWithTrailingNewline_IsRejected()
+    {
+        var json = TestConfigs.DefaultWith("\"id\": \"body\"", "\"id\": \"body\\n\"")
+            .Replace("\"whole\": [\"fingerboard\", \"body\"]", "\"whole\": [\"fingerboard\", \"body\\n\"]");
+
+        var result = ConfigValidator.Parse(json);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("id must be"));
+    }
+
+    [Fact]
+    public void Parse_NeverThrows_ForMutatedDefaultConfig()
+    {
+        // 既定の設定の数値・文字をあちこち書き換えても、例外ではなく検証エラーになること。
+        var source = TestConfigs.DefaultJson;
+        var random = new Random(42);
+        var replacements = new[] { "-1", "0", "1e309", "null", "\"x\"", "[]", "{}", "-0.5", "true", "[0,0]", "1e-320" };
+        for (var i = 0; i < 3000; i++)
+        {
+            var json = source;
+            var position = random.Next(json.Length);
+            var digit = json.IndexOfAny("0123456789".ToCharArray(), position);
+            if (digit >= 0)
+            {
+                var end = digit;
+                while (end < json.Length && (char.IsDigit(json[end]) || json[end] == '.'))
+                {
+                    end++;
+                }
+
+                json = json[..digit] + replacements[random.Next(replacements.Length)] + json[end..];
+            }
+
+            if (random.Next(3) == 0)
+            {
+                var chars = json.ToCharArray();
+                const string noise = "{}[]:,\"-0a ";
+                chars[random.Next(chars.Length)] = noise[random.Next(noise.Length)];
+                json = new string(chars);
+            }
+
+            var exception = Record.Exception(() => ConfigValidator.Parse(json));
+            Assert.True(exception is null, $"Parse threw for input:\n{json}\n{exception}");
+        }
     }
 
     [Fact]

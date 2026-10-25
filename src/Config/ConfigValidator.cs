@@ -25,8 +25,9 @@ public static partial class ConfigValidator
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
-        // 綴り間違いを見逃さないように、知らない項目はエラーにする。
+        // 綴り間違いを見逃さないように、知らない項目と同じ項目の重複はエラーにする。
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        AllowDuplicateProperties = false,
         WriteIndented = true,
     };
 
@@ -185,14 +186,15 @@ public static partial class ConfigValidator
             var position = ValidateVector(region.Position, "position", label, required: true, errors);
             var rotation = ValidateVector(region.RotationEulerDeg, "rotationEulerDeg", label, required: false, errors);
 
-            ValidateRange(region.WidthMeters, "widthMeters", label, minExclusive: 0, MaxSizeMeters, errors);
-            ValidateRange(region.HeightMeters, "heightMeters", label, minExclusive: 0, MaxSizeMeters, errors);
+            var sizeOk = ValidateRange(region.WidthMeters, "widthMeters", label, minExclusive: 0, MaxSizeMeters, errors);
+            sizeOk &= ValidateRange(region.HeightMeters, "heightMeters", label, minExclusive: 0, MaxSizeMeters, errors);
             if (!double.IsFinite(region.MarginMeters) || region.MarginMeters < 0 || region.MarginMeters > MaxMarginMeters)
             {
                 errors.Add($"{label}: marginMeters must be between 0 and {MaxMarginMeters} (got {region.MarginMeters}).");
             }
 
-            var shape = ValidateShape(region.Shape, region.WidthMeters, region.HeightMeters, label, errors);
+            // 形状は大きさが正しいときだけ作る（不正な大きさで形状を作らない）。
+            var shape = sizeOk ? ValidateShape(region.Shape, region.WidthMeters, region.HeightMeters, label, errors) : null;
 
             if (errors.Count == before && shape is not null && anchor is not null)
             {
@@ -280,12 +282,15 @@ public static partial class ConfigValidator
         return new Vec3(values[0], values[1], values[2]);
     }
 
-    private static void ValidateRange(double value, string name, string label, double minExclusive, double maxInclusive, List<string> errors)
+    private static bool ValidateRange(double value, string name, string label, double minExclusive, double maxInclusive, List<string> errors)
     {
         if (!double.IsFinite(value) || value <= minExclusive || value > maxInclusive)
         {
             errors.Add($"{label}: {name} must be greater than {minExclusive} and at most {maxInclusive} (got {value}).");
+            return false;
         }
+
+        return true;
     }
 
     private static List<PresetDefinition> ValidatePresets(List<PresetConfig>? presets, List<MaskRegion> regions, List<string> errors)
@@ -386,6 +391,7 @@ public static partial class ConfigValidator
         }
     }
 
-    [GeneratedRegex("^[A-Za-z0-9_-]{1,64}$")]
+    // $ は末尾の改行の前にも一致するので、\z で文字列の終わりを指定する。
+    [GeneratedRegex(@"^[A-Za-z0-9_-]{1,64}\z")]
     private static partial Regex RegionIdPattern();
 }

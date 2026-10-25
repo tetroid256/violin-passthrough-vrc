@@ -28,11 +28,16 @@ public interface IMaskOverlay : IDisposable
 /// </summary>
 public sealed class MaskOverlay : IMaskOverlay
 {
+    /// <summary>置き場所の設定に失敗したときに、やり直すまでの間隔。</summary>
+    private const long PlacementRetryMilliseconds = 1000;
+
     private ulong _handle = OpenVR.k_ulOverlayHandleInvalid;
     private MaskRegion? _region;
-    private RenderSettings? _settings;
+    private (MaskRegion Region, RenderSettings Settings)? _applied;
+    private AnchorSpec? _anchorSpec;
     private IAnchor? _anchor;
     private AnchorPlacement? _appliedPlacement;
+    private long? _placementFailedAt;
     private bool _textureReady;
     private bool _wantVisible;
     private bool _shown;
@@ -55,7 +60,7 @@ public sealed class MaskOverlay : IMaskOverlay
             throw new ArgumentException($"Region id mismatch: {region.Id} != {RegionId}", nameof(region));
         }
 
-        if (Equals(region, _region) && Equals(settings, _settings) && _handle != OpenVR.k_ulOverlayHandleInvalid)
+        if (_applied == (region, settings) && _handle != OpenVR.k_ulOverlayHandleInvalid)
         {
             return;
         }
@@ -65,26 +70,28 @@ public sealed class MaskOverlay : IMaskOverlay
             return;
         }
 
-        var anchorChanged = !Equals(region.Anchor, _region?.Anchor);
         _region = region;
-        _settings = settings;
-
-        if (anchorChanged || _anchor is null)
+        if (_anchor is null || !Equals(region.Anchor, _anchorSpec))
         {
             _anchor = region.Anchor.CreateAnchor();
+            _anchorSpec = region.Anchor;
         }
 
-        UploadTexture(region, settings);
+        var ok = UploadTexture(region, settings);
 
         var overlay = OpenVR.Overlay;
-        Check(overlay.SetOverlayWidthInMeters(_handle, (float)region.QuadWidthMeters), "SetOverlayWidthInMeters");
+        ok &= Check(overlay.SetOverlayWidthInMeters(_handle, (float)region.QuadWidthMeters), "SetOverlayWidthInMeters");
         // 色の乗算でキー色が変わらないように、α と色は常に 1。
-        Check(overlay.SetOverlayAlpha(_handle, 1.0f), "SetOverlayAlpha");
-        Check(overlay.SetOverlayColor(_handle, 1.0f, 1.0f, 1.0f), "SetOverlayColor");
-        Check(overlay.SetOverlaySortOrder(_handle, settings.SortOrder), "SetOverlaySortOrder");
+        ok &= Check(overlay.SetOverlayAlpha(_handle, 1.0f), "SetOverlayAlpha");
+        ok &= Check(overlay.SetOverlayColor(_handle, 1.0f, 1.0f, 1.0f), "SetOverlayColor");
+        ok &= Check(overlay.SetOverlaySortOrder(_handle, settings.SortOrder), "SetOverlaySortOrder");
+
+        // 失敗したら、次に同じ値で呼ばれたときにやり直す。
+        _applied = ok ? (region, settings) : null;
 
         // 姿勢やアンカーが変わったかもしれないので、置き場所を必ず設定し直す。
         _appliedPlacement = null;
+        _placementFailedAt = null;
         if (!_anchor.RequiresTracking)
         {
             ApplyPlacement(_anchor.Resolve(region.LocalPose, null));
@@ -156,7 +163,7 @@ public sealed class MaskOverlay : IMaskOverlay
         return true;
     }
 
-    private void UploadTexture(MaskRegion region, RenderSettings settings)
+    private bool UploadTexture(MaskRegion region, RenderSettings settings)
     {
         var texture = MaskRasterizer.Rasterize(region, settings);
         var overlay = OpenVR.Overlay;
@@ -172,12 +179,15 @@ public sealed class MaskOverlay : IMaskOverlay
             pin.Free();
         }
 
-        // 画素数の丸めで縦横比がずれないように、テクセルの縦横比で補正する。
-        var texelAspect = (region.QuadWidthMeters / texture.Width) / (region.QuadHeightMeters / texture.Height);
-        Check(overlay.SetOverlayTexelAspect(_handle, (float)texelAspect), "SetOverlayTexelAspect");
+        var aspectOk = Check(overlay.SetOverlayTexelAspect(_handle, (float)TexelAspect(region, texture)), "SetOverlayTexelAspect");
 
         Log.Debug($"[{RegionId}] Texture {texture.Width}x{texture.Height} uploaded (debug={settings.Debug}).");
+        return _textureReady && aspectOk;
     }
+
+    /// <summary>テクセルの縦横比（幅 / 高さ）。画素数の丸めで板の縦横比がずれないように補正する。</summary>
+    internal static double TexelAspect(MaskRegion region, MaskTexture texture) =>
+        (region.QuadWidthMeters / texture.Width) / (region.QuadHeightMeters / texture.Height);
 
     private void ApplyPlacement(AnchorPlacement placement)
     {
@@ -186,14 +196,21 @@ public sealed class MaskOverlay : IMaskOverlay
             return;
         }
 
-        _appliedPlacement = placement;
+        // 失敗が続くときに毎フレームやり直してログが溢れないようにする。
+        var now = Environment.TickCount64;
+        if (_placementFailedAt is { } failedAt && now - failedAt < PlacementRetryMilliseconds)
+        {
+            return;
+        }
+
         var overlay = OpenVR.Overlay;
+        bool ok;
         switch (placement)
         {
             case AnchorPlacement.DeviceRelative relative:
             {
                 var m = ToHmdMatrix(relative.Pose);
-                Check(overlay.SetOverlayTransformTrackedDeviceRelative(_handle, relative.DeviceIndex, ref m),
+                ok = Check(overlay.SetOverlayTransformTrackedDeviceRelative(_handle, relative.DeviceIndex, ref m),
                     "SetOverlayTransformTrackedDeviceRelative");
                 Log.Debug($"[{RegionId}] Placed relative to device {relative.DeviceIndex}.");
                 break;
@@ -202,16 +219,21 @@ public sealed class MaskOverlay : IMaskOverlay
             case AnchorPlacement.Absolute absolute:
             {
                 var m = ToHmdMatrix(absolute.Pose);
-                Check(overlay.SetOverlayTransformAbsolute(_handle, ToOrigin(absolute.Universe), ref m),
+                ok = Check(overlay.SetOverlayTransformAbsolute(_handle, ToOrigin(absolute.Universe), ref m),
                     "SetOverlayTransformAbsolute");
                 Log.Debug($"[{RegionId}] Placed absolute ({absolute.Universe}).");
                 break;
             }
 
-            case AnchorPlacement.Hidden:
+            default:
+                ok = true;
                 Log.Debug($"[{RegionId}] No placement available; hiding.");
                 break;
         }
+
+        // 失敗したら置き場所は未設定のまま（既定の位置に表示されないように隠したままにする）。
+        _appliedPlacement = ok ? placement : null;
+        _placementFailedAt = ok ? null : now;
     }
 
     private void UpdateVisibility()
@@ -252,7 +274,7 @@ public sealed class MaskOverlay : IMaskOverlay
         return false;
     }
 
-    private static HmdMatrix34_t ToHmdMatrix(Pose3x4 p) => new()
+    internal static HmdMatrix34_t ToHmdMatrix(Pose3x4 p) => new()
     {
         m0 = (float)p.M00, m1 = (float)p.M01, m2 = (float)p.M02, m3 = (float)p.M03,
         m4 = (float)p.M10, m5 = (float)p.M11, m6 = (float)p.M12, m7 = (float)p.M13,

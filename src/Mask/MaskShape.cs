@@ -46,7 +46,8 @@ public sealed record RoundedRectShape : MaskShape
     {
         HalfWidth = halfWidth;
         HalfHeight = halfHeight;
-        CornerRadius = Math.Clamp(cornerRadius, 0, Math.Min(halfWidth, halfHeight));
+        // 不正な大きさでも例外を出さないように、上限が負にならないようにしてから切り詰める。
+        CornerRadius = Math.Min(Math.Max(cornerRadius, 0), Math.Max(0, Math.Min(halfWidth, halfHeight)));
     }
 
     public double HalfWidth { get; }

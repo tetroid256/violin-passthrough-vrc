@@ -23,7 +23,7 @@
 うまくいかないとき:
 - 楕円の縁にマゼンタが残る → VD の Similarity / Smoothness を調整する。
 - 楕円が全く抜けない → VD のキー色が完全に一致しているか、OVR Advanced Settings の色補正がオフかを確認する。
-- 楕円の傾きが逆に見える → Phase 2 以降で `rotationEulerDeg` の pitch の符号を反転して調整する（回転の規約は DESIGN.md の「未決事項」参照）。
+- 楕円の傾きが思ったのと逆に見える → Phase 2 以降で `rotationEulerDeg` を調整する（pitch 正で上を向く、yaw 正で右を向く、roll 正で右端が上がる。DESIGN.md の「未決事項」参照）。
 
 ## Phase 2: 設定ファイルとホットリロード
 
@@ -41,3 +41,22 @@
    - [ ] 項目名を打ち間違える（`"widhtMeters"`）と、その名前がログに出て反映されない。
    - [ ] `"edgeMode": "aa"` と `"hard"` で縁の抜け方を比較する（未決事項。結果を教えてください）。
 4. 初期配置の調整: `debugVisible: true` のまま、実際にバイオリンを構えて楕円が駒〜左手を覆うように `position` / `rotationEulerDeg` / サイズを調整する（未決事項。決まった値を教えてください）。
+
+## Phase 3: OSC 切り替え
+
+準備（DESIGN.md §9）:
+1. アバターの Expression Parameters に `HandPassthrough`（Bool）、`HandPassthroughPreset`（Int）、`HandPassthroughDebug`（Bool）を追加する。**3つとも Synced のチェックを外す**。
+2. Expressions Menu に Toggle（HandPassthrough）、Toggle（HandPassthroughDebug）、プリセット用に Sub Menu の Button / Toggle（HandPassthroughPreset を 0 と 1 にする）を追加してアップロードする。
+3. VRChat の Action Menu → Options → OSC → Enabled を ON。アバターを更新したら OSC の **Reset Config** を実行する。
+
+確認すること:
+- [ ] 起動ログに `OSCQuery advertised as "ViolinPassthrough" (HTTP ..., OSC UDP 127.0.0.1:...)` が出る（`OSCQuery could not start` が出た場合はフォールバックしている。理由が書いてあるので教えてください）。
+- [ ] アバターメニューの HandPassthrough トグルで、窓が出たり消えたりする。ログに `Passthrough enabled (OSC).` / `disabled (OSC).` が出る。
+- [ ] Debug トグルで赤い表示に切り替わる。Preset を 1 にすると body の窓も出る。
+- [ ] **XSOverlay を起動したままでも** 上の切り替えが効く（9001 番ポートを取り合わないこと）。XSOverlay 側の OSC 機能も引き続き動く。
+- [ ] アバターを変えても、窓の状態（出ている／消えている）がそのまま保たれる。2 秒ほどでメニューのトグルの表示も実際の状態に揃う。
+- [ ] 本アプリを再起動すると、メニューのトグルが本アプリの状態（`startEnabled` の値）に揃う。
+- [ ] `config.json` の `osc.parameters.enabled` を別の名前に変えて保存すると、ログに `OSC settings changed; restarting OSC.` が出る（元に戻しておく）。
+
+OSCQuery がうまく動かないとき（フォールバック）:
+- `"useOscQuery": false` にすると `fallbackListenPort`（既定 9011）で待ち受ける。この場合は VRChat の起動オプションに `--osc=9000:127.0.0.1:9011` を付けて送信先を変える必要がある（XSOverlay などが 9001 を使っていても競合しない）。

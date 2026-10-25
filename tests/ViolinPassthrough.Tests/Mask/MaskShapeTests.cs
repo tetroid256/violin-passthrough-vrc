@@ -41,6 +41,28 @@ public class MaskShapeTests
         Assert.Equal(0.001, e.SignedDistance(0, 0.101), 4);
     }
 
+    [Theory]
+    [InlineData(0.002)]
+    [InlineData(-0.002)]
+    [InlineData(0.0005)]
+    public void Ellipse_DistanceIsAccurateOffAxis(double offset)
+    {
+        var e = new EllipseShape(0.255, 0.155);
+
+        for (var deg = 5; deg < 360; deg += 10)
+        {
+            // 縁上の点から法線方向に offset だけずらした点。真の距離は offset。
+            var t = deg * Math.PI / 180;
+            var (bx, by) = (e.HalfWidth * Math.Cos(t), e.HalfHeight * Math.Sin(t));
+            var (nx, ny) = (bx / (e.HalfWidth * e.HalfWidth), by / (e.HalfHeight * e.HalfHeight));
+            var len = Math.Sqrt(nx * nx + ny * ny);
+            var (x, y) = (bx + offset * nx / len, by + offset * ny / len);
+
+            Assert.Equal(offset, e.SignedDistance(x, y), 4);
+            Assert.InRange(e.SignedDistance(x, y) / offset, 0.97, 1.03);
+        }
+    }
+
     [Fact]
     public void Ellipse_Inflate_AddsMarginToBothAxes()
     {
@@ -71,6 +93,13 @@ public class MaskShapeTests
         var r = new RoundedRectShape(0.15, 0.10, 1.0);
 
         Assert.Equal(0.10, r.CornerRadius);
+    }
+
+    [Fact]
+    public void RoundedRect_InvalidSize_DoesNotThrow()
+    {
+        Assert.Equal(0, new RoundedRectShape(-0.15, 0.10, 0.05).CornerRadius);
+        Assert.Equal(0, new RoundedRectShape(0.15, 0.10, -1).CornerRadius);
     }
 
     [Fact]

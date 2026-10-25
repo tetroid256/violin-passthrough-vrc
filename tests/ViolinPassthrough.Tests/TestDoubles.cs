@@ -2,14 +2,23 @@ using ViolinPassthrough.Anchor;
 using ViolinPassthrough.App;
 using ViolinPassthrough.Config;
 using ViolinPassthrough.Mask;
+using ViolinPassthrough.Osc;
 
 namespace ViolinPassthrough.Tests;
 
 internal sealed class ManualTimeProvider : TimeProvider
 {
     private DateTimeOffset _now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private TimeSpan _wallOffset;
 
-    public override DateTimeOffset GetUtcNow() => _now;
+    public override DateTimeOffset GetUtcNow() => _now + _wallOffset;
+
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+    public override long GetTimestamp() => _now.UtcTicks;
+
+    /// <summary>壁時計だけを動かす（単調時計は動かさない）。</summary>
+    public void StepWallClock(TimeSpan delta) => _wallOffset += delta;
 
     public void Advance(TimeSpan delta) => _now += delta;
 }
@@ -112,6 +121,37 @@ internal sealed class FakeConfigSource : IConfigSource
 
         Current = config;
         return true;
+    }
+}
+
+internal sealed class FakeOscEndpoint : IOscEndpoint
+{
+    public FakeOscEndpoint(OscSettings settings)
+    {
+        Settings = settings;
+    }
+
+    public OscSettings Settings { get; }
+
+    public Queue<OscMessage> Incoming { get; } = new();
+
+    public List<OscMessage> Sent { get; } = new();
+
+    public bool Disposed { get; private set; }
+
+    public bool TryReceive([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out OscMessage? message) =>
+        Incoming.TryDequeue(out message);
+
+    public void Send(OscMessage message) => Sent.Add(message);
+
+    public void Dispose() => Disposed = true;
+
+    /// <summary>送ったメッセージを取り出して空にする。</summary>
+    public List<string> TakeSent()
+    {
+        var sent = Sent.Select(m => m.ToString()).ToList();
+        Sent.Clear();
+        return sent;
     }
 }
 

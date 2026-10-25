@@ -25,13 +25,27 @@ public class Pose3x4Tests
     }
 
     [Fact]
-    public void PositivePitch_RotatesUpTowardViewer()
+    public void PositivePitch_TurnsPlaneToFaceUp()
     {
-        // 右手系の X 軸まわり: +Y は +Z（手前）へ倒れる。
+        // pitch 正で板の表（+Z）は上を向き、上端（+Y）は奥（-Z）へ倒れる。
         var pose = Pose3x4.FromPositionEuler(default, new Vec3(90, 0, 0));
-        var up = pose.TransformDirection(new Vec3(0, 1, 0));
 
-        AssertVec(new Vec3(0, 0, 1), up);
+        AssertVec(new Vec3(0, 1, 0), pose.TransformDirection(new Vec3(0, 0, 1)));
+        AssertVec(new Vec3(0, 0, -1), pose.TransformDirection(new Vec3(0, 1, 0)));
+    }
+
+    [Theory]
+    [InlineData(-0.15, -0.15, -0.40, 15, 20, -15)]
+    [InlineData(-0.05, -0.22, -0.30, 30, 10, -15)]
+    public void DesignDefaults_FaceTheViewer(double x, double y, double z, double pitch, double yaw, double roll)
+    {
+        // 設計書の初期値は、視点の左下にある板を視点に向ける角度になっている。
+        var pose = Pose3x4.FromPositionEuler(new Vec3(x, y, z), new Vec3(pitch, yaw, roll));
+        var normal = pose.TransformDirection(new Vec3(0, 0, 1));
+        var toEye = new Vec3(-x, -y, -z);
+        var cos = Dot(normal, toEye) / Math.Sqrt(Dot(toEye, toEye));
+
+        Assert.True(cos > Math.Cos(15 * Math.PI / 180), $"angle = {Math.Acos(cos) * 180 / Math.PI:0.0} deg");
     }
 
     [Fact]
@@ -44,12 +58,33 @@ public class Pose3x4Tests
     }
 
     [Fact]
+    public void Roll_IsAppliedInThePlanesOwnFrame()
+    {
+        // roll は板自身の面内の回転なので、pitch / yaw の後でも板の法線は変えない。
+        var withoutRoll = Pose3x4.FromPositionEuler(default, new Vec3(15, 20, 0));
+        var withRoll = Pose3x4.FromPositionEuler(default, new Vec3(15, 20, -40));
+
+        AssertVec(
+            withoutRoll.TransformDirection(new Vec3(0, 0, 1)),
+            withRoll.TransformDirection(new Vec3(0, 0, 1)));
+    }
+
+    [Fact]
+    public void Yaw_IsAppliedLast_AroundTheViewersVerticalAxis()
+    {
+        // yaw は最後に HMD の Y 軸まわりで回すので、pitch で上を向いた法線の高さ（Y 成分）は yaw で変わらない。
+        var a = Pose3x4.FromPositionEuler(default, new Vec3(30, 0, 10)).TransformDirection(new Vec3(0, 0, 1));
+        var b = Pose3x4.FromPositionEuler(default, new Vec3(30, 70, 10)).TransformDirection(new Vec3(0, 0, 1));
+
+        Assert.Equal(a.Y, b.Y, Precision);
+    }
+
+    [Fact]
     public void EulerOrder_IsYawPitchRoll()
     {
-        var euler = new Vec3(15, 20, -15);
-        var expected = Pose3x4.RotationY(20) * Pose3x4.RotationX(15) * Pose3x4.RotationZ(-15);
+        var expected = Pose3x4.RotationY(20) * Pose3x4.RotationX(-15) * Pose3x4.RotationZ(-15);
 
-        var pose = Pose3x4.FromPositionEuler(default, euler);
+        var pose = Pose3x4.FromPositionEuler(default, new Vec3(15, 20, -15));
 
         AssertPose(expected, pose);
     }
