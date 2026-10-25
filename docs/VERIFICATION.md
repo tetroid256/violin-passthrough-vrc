@@ -101,9 +101,10 @@ OSCQuery がうまく動かないとき（フォールバック）:
 - [ ] HandPassthroughCalibrate を ON にすると、視界の少し上に `CALIBRATE 5` … `1` が出て、1 秒ごとにビープ音が鳴る（**ヘッドセットで聞こえるか**。聞こえなければ教えてください）。
 - [ ] 左手を 1st ポジション、右手（弓の元）を駒の近くに置いて待つと、`CALIBRATED` と出て高い音が鳴り、5 秒間、新しい窓が赤く表示される。窓が左手から駒までを覆っている。
 - [ ] メニューの Calibrate トグルが自動で OFF に戻る。
-- [ ] `%APPDATA%\ViolinPassthrough\config.json` の fingerboard の `position` / `rotationEulerDeg` / `widthMeters` と `auto.leftHandPosition` / `auto.headUp` が書き換わり、`config.json.bak` に元の内容がある。
-- [ ] カウントダウン中に Calibrate を OFF にすると `CALIBRATION CANCELLED` と出て、設定は変わらない。
-- [ ] 片手を背中に回すなどして見失わせると `CAL FAILED: NO LEFT HAND`（または RIGHT）と出て、設定は変わらない。
+- [ ] `%APPDATA%\ViolinPassthrough\config.json` の fingerboard の `position` / `rotationEulerDeg` / `widthMeters` と `auto.leftHandPosition` / `auto.headUp` が書き換わる。`config.json.bak` に直前の内容、`config.json.orig` に最初の内容が残る。
+- [ ] 弓の手（近い方）と左手（遠い方）の両方が、目から見て窓の内側に入っている（窓は目から見た両手の方向で合わせる）。
+- [ ] カウントダウン中に Calibrate を OFF にすると `CAL CANCELLED` と出て、設定は変わらない。
+- [ ] 片手を背中に回すなどして見失わせると `CAL FAIL: NO LEFT HAND`（または RIGHT）と出て、設定は変わらない。
 - [ ] 何度か繰り返して、窓の位置が毎回ほぼ同じになる（ハンドトラッキングの精度の確認）。窓が短い・ずれるときは結果を教えてください（`padMeters` の既定値や手の位置の補正を決めるため）。
 
 ### 自動モード
@@ -115,5 +116,5 @@ OSCQuery がうまく動かないとき（フォールバック）:
 
 ### 通知
 - [ ] Preset を切り替えると `PRESET WHOLE` などと出る。
-- [ ] config.json を保存すると `CONFIG RELOADED`、壊して保存すると `CONFIG ERROR - SEE LOG` と出る。
+- [ ] config.json を保存すると `CONFIG RELOADED`、壊して保存すると `CONFIG ERROR`（理由はログに出る） と出る。
 - [ ] 通知の文字が読める大きさで、演奏の邪魔にならない位置にある（`feedback.position` / `textHeightMeters` で調整できる）。

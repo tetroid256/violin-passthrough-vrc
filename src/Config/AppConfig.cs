@@ -183,7 +183,7 @@ public sealed class FeedbackConfig
     public double[]? Position { get; set; } = { 0, 0.08, -0.5 };
 
     /// <summary>文字の高さ（メートル）。</summary>
-    public double TextHeightMeters { get; set; } = 0.025;
+    public double TextHeightMeters { get; set; } = 0.015;
 }
 
 /// <summary>

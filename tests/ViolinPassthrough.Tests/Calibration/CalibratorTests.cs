@@ -25,32 +25,74 @@ public class CalibratorTests
     }
 
     [Fact]
-    public void PlateIsCenteredBetweenTheHandsAndFacesTheEye()
+    public void PlateIsPerpendicularToTheViewBisector_AtTheHandsMeanDistance()
     {
         var result = Compute(Tracking.StandingHmd(), LeftLocal, RightLocal);
         var pose = Pose3x4.FromPositionEuler(result.Position, result.RotationEulerDeg);
 
-        AssertVec((LeftLocal + RightLocal) * 0.5, result.Position, 9);
+        var view = (LeftLocal.Normalized() + RightLocal.Normalized()).Normalized();
         var normal = pose.TransformDirection(new Vec3(0, 0, 1));
-        AssertVec((-result.Position).Normalized(), normal, 9);
+        AssertVec(-view, normal, 9);
+        Assert.Equal(((LeftLocal + RightLocal) * 0.5).Length, Vec3.Dot(result.Position, view), 9);
         Assert.Equal("fingerboard", result.RegionId);
     }
 
     [Fact]
-    public void HandsLieOnThePlatesHorizontalAxis_AndWidthAddsPadding()
+    public void FromTheEye_HandsAppearOnTheHorizontalAxis_PaddingInsideTheEdges()
     {
         var result = Compute(Tracking.StandingHmd(), LeftLocal, RightLocal, pad: 0.05);
-        var toPlate = Pose3x4.FromPositionEuler(result.Position, result.RotationEulerDeg).Inverse();
 
-        var left = toPlate.TransformPoint(LeftLocal);
-        var right = toPlate.TransformPoint(RightLocal);
+        var left = SeenOnPlate(result, new Vec3(0, 0, 0), LeftLocal);
+        var right = SeenOnPlate(result, new Vec3(0, 0, 0), RightLocal);
 
-        // 左手は板の左（-X）、右手は右（+X）。板の面の上で縦方向（Y）のずれはない。
-        Assert.True(left.X < 0 && right.X > 0);
         Assert.Equal(0, left.Y, 9);
         Assert.Equal(0, right.Y, 9);
-        Assert.Equal(right.X - left.X + 0.10, result.WidthMeters, 9);
-        Assert.Equal(-left.X, right.X, 9);
+        Assert.Equal(-(result.WidthMeters / 2 - 0.05), left.X, 9);
+        Assert.Equal(result.WidthMeters / 2 - 0.05, right.X, 9);
+    }
+
+    [Theory]
+    [InlineData(-0.032)]
+    [InlineData(0.032)]
+    public void NearBowHandAndFarLeftHand_BothFitTheWindowFromEachEye(double eyeX)
+    {
+        // 弓の手（駒）は近く、左手（スクロール側）は遠い。どちらの目から見ても両手が窓（余白込み）に入ること。
+        var left = new Vec3(-0.35, -0.12, -0.35);
+        var right = new Vec3(0.02, -0.18, -0.15);
+        var result = Compute(Tracking.StandingHmd(), left, right, pad: 0.05);
+        var region = Region with { WidthMeters = result.WidthMeters };
+        var halfW = region.QuadWidthMeters / 2;
+        var halfH = region.QuadHeightMeters / 2;
+
+        foreach (var hand in new[] { left, right })
+        {
+            var p = SeenOnPlate(result, new Vec3(eyeX, 0, 0), hand);
+            Assert.InRange(p.X, -halfW, halfW);
+            Assert.InRange(p.Y, -halfH, halfH);
+        }
+    }
+
+    [Fact]
+    public void LookingAtTheLeftHand_StillCalibrates()
+    {
+        // 左手を見ながら構えると、目から見た両手の方向は近い（約 10°）が、失敗にしない。
+        var left = new Vec3(-0.05, -0.08, -0.55);
+        var right = new Vec3(0.0, -0.10, -0.30);
+
+        var result = Compute(Tracking.StandingHmd(), left, right);
+
+        Assert.InRange(Vec3.AngleDeg(left, right), 5, 15);
+        Assert.True(result.WidthMeters > 0.1);
+    }
+
+    /// <summary>目（HMD 座標の点）から手を見たとき、視線が板と交わる点（板の座標）。</summary>
+    private static Vec3 SeenOnPlate(CalibrationResult result, Vec3 eye, Vec3 hand)
+    {
+        var pose = Pose3x4.FromPositionEuler(result.Position, result.RotationEulerDeg);
+        var normal = pose.TransformDirection(new Vec3(0, 0, 1));
+        var dir = (hand - eye).Normalized();
+        var t = Vec3.Dot(result.Position - eye, normal) / Vec3.Dot(dir, normal);
+        return pose.Inverse().TransformPoint(eye + dir * t);
     }
 
     [Fact]
@@ -100,6 +142,16 @@ public class CalibratorTests
     }
 
     [Fact]
+    public void HandsInOppositeDirections_Fail()
+    {
+        var hmd = Tracking.StandingHmd();
+        var tracking = Tracking.Make(hmd, new Vec3(-0.5, 0, 0.01), new Vec3(0.5, 0, 0.01));
+
+        Assert.Null(Calibrator.Compute(hmd, tracking.Poses[1].DeviceToAbsolute, tracking.Poses[2].DeviceToAbsolute, Region, 0.05, out var error));
+        Assert.Equal("HANDS TOO FAR APART", error);
+    }
+
+    [Fact]
     public void HandsAlongTheLineOfSight_Fail()
     {
         // 両手が視線の方向に並んでいると、板の面に投影した距離が足りない。
@@ -117,7 +169,7 @@ public class CalibratorTests
         var tracking = Tracking.Make(hmd, new Vec3(-0.04, 0, 0), new Vec3(0.04, 0, 0));
 
         Assert.Null(Calibrator.Compute(hmd, tracking.Poses[1].DeviceToAbsolute, tracking.Poses[2].DeviceToAbsolute, Region, 0.05, out var error));
-        Assert.Equal("HANDS TOO CLOSE TO HEAD", error);
+        Assert.Equal("TOO CLOSE TO HEAD", error);
     }
 
     private static void AssertVec(Vec3 expected, Vec3 actual, int precision)

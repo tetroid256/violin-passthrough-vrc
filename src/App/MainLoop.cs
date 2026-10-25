@@ -51,6 +51,9 @@ public sealed class MainLoop : IDisposable
     private string? _previewRegionId;
     private long? _previewUntil;
 
+    // キャリブレーションの書き込みによる再読み込みでは「CONFIG RELOADED」を出さない。
+    private long? _suppressReloadToastUntil;
+
     // 1フレームの中で、トラッキング情報は必要になったときに1回だけ取る。
     private TrackingSnapshot? _frameTracking;
 
@@ -75,9 +78,10 @@ public sealed class MainLoop : IDisposable
         _posture = new PostureDetector(_time);
         _calibration = new CalibrationSession(_time);
         _config = configSource.Current;
-        _seenInvalidCount = configSource.InvalidCount;
+        // 起動時から設定が壊れていた（既定の設定で動いている）ときも、最初のフレームで知らせる。
+        _seenInvalidCount = 0;
         Log.MinLevel = _config.LogLevel;
-        _status.Configure(_config.Feedback, _config.Render.SortOrder);
+        _status.Configure(_config.Feedback, _config.Render.SortOrder, _config.Render.KeyColor);
     }
 
     /// <summary>キャリブレーションのカウントダウン中か。</summary>
@@ -148,7 +152,7 @@ public sealed class MainLoop : IDisposable
         if (_configSource.InvalidCount != _seenInvalidCount)
         {
             _seenInvalidCount = _configSource.InvalidCount;
-            _status.Show("CONFIG ERROR - SEE LOG", StatusKind.Error, ResultDuration);
+            _status.Show("CONFIG ERROR", StatusKind.Error, ResultDuration);
         }
 
         EnsureOsc();
@@ -187,7 +191,7 @@ public sealed class MainLoop : IDisposable
         var previous = _config;
         _config = next;
         Log.MinLevel = next.LogLevel;
-        _status.Configure(next.Feedback, next.Render.SortOrder);
+        _status.Configure(next.Feedback, next.Render.SortOrder, next.Render.KeyColor);
 
         // 状態に関わる項目は、ファイル上の値が変わったときだけ反映する（OSC での変更を上書きしないため）。
         if (next.DebugVisible != previous.DebugVisible && _state.SetDebug(next.DebugVisible))
@@ -206,7 +210,11 @@ public sealed class MainLoop : IDisposable
         }
 
         // キャリブレーションの結果を書き込んだときは、結果の通知を上書きしない。
-        if (!Previewing)
+        if (_suppressReloadToastUntil is { } until && _time.GetTimestamp() < until)
+        {
+            _suppressReloadToastUntil = null;
+        }
+        else
         {
             _status.Show("CONFIG RELOADED", StatusKind.Success, ToastDuration);
         }
@@ -291,7 +299,11 @@ public sealed class MainLoop : IDisposable
         }
         else if (_state.ActivePreset != before.Preset)
         {
-            _status.Show("PRESET " + _state.ActivePreset.ToUpperInvariant(), StatusKind.Info, ToastDuration);
+            // フォントに無い文字（日本語など）を含む名前は、番号で出す。
+            var name = BitmapFont.IsSupported(_state.ActivePreset)
+                ? _state.ActivePreset.ToUpperInvariant()
+                : _config.IndexOfPreset(_state.ActivePreset).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            _status.Show("PRESET " + name, StatusKind.Info, ToastDuration);
         }
         else if (_state.Enabled != before.Enabled && _state.Auto)
         {
@@ -320,7 +332,7 @@ public sealed class MainLoop : IDisposable
 
         _calibration.Cancel();
         Log.Info("Calibration cancelled.");
-        _status.Show("CALIBRATION CANCELLED", StatusKind.Error, ResultDuration, isToast: false);
+        _status.Show("CAL CANCELLED", StatusKind.Error, ResultDuration, isToast: false);
         Beep(BeepKind.Error);
     }
 
@@ -352,7 +364,7 @@ public sealed class MainLoop : IDisposable
 
         if (region.Anchor is not HmdAnchorSpec)
         {
-            FailCalibration("REGION IS NOT HMD", $"region \"{settings.RegionId}\" is not hmd-anchored");
+            FailCalibration("NOT HMD REGION", $"region \"{settings.RegionId}\" is not hmd-anchored");
             return;
         }
 
@@ -390,6 +402,7 @@ public sealed class MainLoop : IDisposable
 
         Log.Info($"Calibrated \"{result.RegionId}\": position {Format(result.Position)}, rotation {Format(result.RotationEulerDeg)}, width {result.WidthMeters:0.000} m.");
         _status.Show("CALIBRATED", StatusKind.Success, ResultDuration, isToast: false);
+        _suppressReloadToastUntil = _time.GetTimestamp() + (long)(ResultDuration.TotalSeconds * _time.TimestampFrequency);
         Beep(BeepKind.Success);
 
         // 結果をデバッグ表示で見せる（無効の状態でも見せる）。
@@ -404,7 +417,7 @@ public sealed class MainLoop : IDisposable
     private void FailCalibration(string message, string detail)
     {
         Log.Warn($"Calibration failed: {detail}.");
-        _status.Show("CAL FAILED: " + message, StatusKind.Error, ResultDuration, isToast: false);
+        _status.Show("CAL FAIL: " + message, StatusKind.Error, ResultDuration, isToast: false);
         Beep(BeepKind.Error);
     }
 

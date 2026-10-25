@@ -65,9 +65,12 @@ public static class BitmapFont
         ['('] = new[] { "...#.", "..#..", ".#...", ".#...", ".#...", "..#..", "...#." },
         [')'] = new[] { ".#...", "..#..", "...#.", "...#.", "...#.", "..#..", ".#..." },
         ['+'] = new[] { ".....", "..#..", "..#..", "#####", "..#..", "..#..", "....." },
+        ['_'] = new[] { ".....", ".....", ".....", ".....", ".....", ".....", "#####" },
     };
 
     public static bool IsSupported(char c) => Glyphs.ContainsKey(char.ToUpperInvariant(c));
+
+    public static bool IsSupported(string text) => text.All(IsSupported);
 
     /// <summary>文字列の幅（フォントの点の数、余白込み）。</summary>
     public static int MeasureDots(string text) =>

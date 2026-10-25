@@ -20,14 +20,19 @@ public sealed record CalibrationResult(
 
 /// <summary>
 /// 両手の位置から、領域の板を置き直す（DESIGN.md §15.2）。
-/// 板の中心は両手の中点、表は視点を向き、横方向は左手 → 右手。幅は両手の距離 + 両端の余裕。
+/// 目から見た両手の方向の真ん中に、両手までの距離の中間で板を置く。板は視線（両手の方向の二等分線）に垂直で、
+/// 両手はそれぞれの視線に沿って板に投影する（目から見て、両手がちょうど板の左右の端の内側に来る）。
+/// 弓の手は近く、左手（スクロール側）は遠いのが普通なので、真正面に投影すると近い方の手が板からはみ出すため。
 /// </summary>
 public static class Calibrator
 {
-    /// <summary>両手がこれより近いと、向きが決まらないので失敗にする。</summary>
-    public const double MinHandDistanceMeters = 0.08;
+    /// <summary>目から見た両手の方向がこれより近いと、向きが決まらないので失敗にする（度）。</summary>
+    public const double MinHandAngleDeg = 4.0;
 
-    /// <summary>板の中心が視点にこれより近いと、表の向きが決まらないので失敗にする。</summary>
+    /// <summary>目から見た両手の方向がこれより離れていると、板が決まらないので失敗にする（度）。</summary>
+    public const double MaxHandAngleDeg = 150.0;
+
+    /// <summary>手が目にこれより近いと、向きが決まらないので失敗にする。</summary>
     public const double MinDistanceFromEyeMeters = 0.1;
 
     /// <summary>
@@ -45,32 +50,45 @@ public static class Calibrator
         var toHmd = hmd.Inverse();
         var left = toHmd.TransformPoint(leftHand.Translation);
         var right = toHmd.TransformPoint(rightHand.Translation);
-        var center = (left + right) * 0.5;
 
-        if (center.Length < MinDistanceFromEyeMeters)
+        if (left.Length < MinDistanceFromEyeMeters || right.Length < MinDistanceFromEyeMeters)
         {
-            error = "HANDS TOO CLOSE TO HEAD";
+            error = "TOO CLOSE TO HEAD";
             return null;
         }
 
-        // 表（+Z）は視点（原点）を向く。
-        var normal = (-center).Normalized();
-
-        // 横方向（+X）は左手 → 右手を板の面に投影したもの。
-        var across = right - left;
-        var inPlane = across - normal * Vec3.Dot(across, normal);
-        var length = inPlane.Length;
-        if (length < MinHandDistanceMeters)
+        var leftDir = left.Normalized();
+        var rightDir = right.Normalized();
+        var angle = Vec3.AngleDeg(leftDir, rightDir);
+        if (angle < MinHandAngleDeg)
         {
             error = "HANDS TOO CLOSE";
             return null;
         }
 
-        var x = inPlane.Normalized();
+        if (angle > MaxHandAngleDeg)
+        {
+            error = "HANDS TOO FAR APART";
+            return null;
+        }
+
+        // 視線 = 両手の方向の二等分線。板はこれに垂直で、両手までの距離の中間に置く。
+        var view = (leftDir + rightDir).Normalized();
+        var distance = ((left + right) * 0.5).Length;
+
+        // 両手をそれぞれの視線に沿って板の面（p・view = distance）に投影する。
+        var leftOnPlate = left * (distance / Vec3.Dot(left, view));
+        var rightOnPlate = right * (distance / Vec3.Dot(right, view));
+        var center = (leftOnPlate + rightOnPlate) * 0.5;
+        var across = rightOnPlate - leftOnPlate;
+
+        // 表（+Z）は視点を向き、横方向（+X）は左手 → 右手。
+        var normal = -view;
+        var x = across.Normalized();
         var y = Vec3.Cross(normal, x);
         var pose = Pose3x4.FromBasis(center, x, y, normal);
 
-        var width = Math.Min(length + 2 * padMeters, Config.ConfigValidator.MaxSizeMeters);
+        var width = Math.Min(across.Length + 2 * padMeters, Config.ConfigValidator.MaxSizeMeters);
 
         // HMD から見た「上」= 世界の上（+Y）を HMD 座標に直したもの。
         var headUp = toHmd.TransformDirection(new Vec3(0, 1, 0));

@@ -12,7 +12,7 @@ public class StatusDisplayTests
     private StatusDisplay Create(bool toasts = true)
     {
         var display = new StatusDisplay(_overlay, _time);
-        display.Configure(new FeedbackSettings(toasts, new Vec3(0, 0.08, -0.5), 0.025), 100);
+        display.Configure(new FeedbackSettings(toasts, new Vec3(0, 0.08, -0.5), 0.025), 100, new ViolinPassthrough.Mask.Rgb(255, 0, 255));
         return display;
     }
 
@@ -83,6 +83,23 @@ public class StatusDisplayTests
         Assert.DoesNotContain(((byte)255, (byte)0, (byte)255, (byte)255), success.Concat(failure));
     }
 
+    [Theory]
+    [InlineData(120, 255, 140)]
+    [InlineData(0, 255, 0)]
+    [InlineData(255, 255, 255)]
+    [InlineData(255, 110, 90)]
+    public void TextColors_StayAwayFromTheKeyColor(byte r, byte g, byte b)
+    {
+        var key = new ViolinPassthrough.Mask.Rgb(r, g, b);
+
+        foreach (var kind in Enum.GetValues<StatusKind>())
+        {
+            var color = StatusDisplay.ColorFor(kind, key);
+            var distance = Math.Sqrt(Math.Pow(color.R - r, 2) + Math.Pow(color.G - g, 2) + Math.Pow(color.B - b, 2));
+            Assert.True(distance >= 120, $"{kind} color {color} is too close to key {key}");
+        }
+    }
+
     [Fact]
     public void WithoutOverlay_DoesNothing()
     {
@@ -142,7 +159,7 @@ public class BitmapFontTests
     [Fact]
     public void AllGlyphs_Are5x7()
     {
-        foreach (var c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ -.:!?/()+")
+        foreach (var c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ -.:!?/()+_")
         {
             Assert.True(BitmapFont.IsSupported(c), $"'{c}' is missing");
             var texture = BitmapFont.Render(c.ToString(), White, Clear, scale: 1);

@@ -47,9 +47,26 @@ public sealed class PostureDetector
     public bool Update(AutoSettings settings, TrackingSnapshot tracking)
     {
         var raw = Evaluate(settings, tracking, InPosture);
-        if (raw is null || raw == InPosture)
+        if (raw is null)
         {
-            // 姿勢が取れない間は直前の判定を保つ。待ち時間も数え直す。
+            // 姿勢が取れない間は直前の判定を保つ。ただし、外れ始めていたら（楽器を下ろした直後に手が
+            // カメラの外に出た場合など）その待ち時間は数え続け、時間が来たら隠す。
+            if (InPosture && _changingSince is { } since
+                && _time.GetElapsedTime(since).TotalSeconds >= settings.ExitDelaySeconds)
+            {
+                InPosture = false;
+                _changingSince = null;
+            }
+            else if (!InPosture)
+            {
+                _changingSince = null;
+            }
+
+            return InPosture;
+        }
+
+        if (raw == InPosture)
+        {
             _changingSince = null;
             return InPosture;
         }
@@ -74,6 +91,7 @@ public sealed class PostureDetector
 
     /// <summary>
     /// 待ち時間を考えない判定。必要な姿勢が取れなければ null。
+    /// 左手を見失っていても、頭の傾きの条件を使っていれば頭の傾きだけで決める。
     /// </summary>
     internal static bool? Evaluate(AutoSettings settings, TrackingSnapshot tracking, bool currentlyInPosture)
     {
@@ -86,20 +104,23 @@ public sealed class PostureDetector
         var factor = currentlyInPosture ? ExitHysteresis : 1.0;
         var result = true;
 
+        var useHeadTilt = settings.UseHeadTilt && settings.HeadUp is not null;
         if (settings.UseLeftHand)
         {
             var index = tracking.LeftHandIndex;
-            if (index == TrackingSnapshot.InvalidDeviceIndex
-                || tracking.TryGetPose(index) is not { IsConnected: true, IsPoseValid: true } hand)
+            if (index != TrackingSnapshot.InvalidDeviceIndex
+                && tracking.TryGetPose(index) is { IsConnected: true, IsPoseValid: true } hand)
+            {
+                var local = toHmd.TransformPoint(hand.DeviceToAbsolute.Translation);
+                result &= (local - settings.LeftHandPosition).Length <= settings.RadiusMeters * factor;
+            }
+            else if (!useHeadTilt)
             {
                 return null;
             }
-
-            var local = toHmd.TransformPoint(hand.DeviceToAbsolute.Translation);
-            result &= (local - settings.LeftHandPosition).Length <= settings.RadiusMeters * factor;
         }
 
-        if (settings.UseHeadTilt && settings.HeadUp is { } reference)
+        if (useHeadTilt && settings.HeadUp is { } reference)
         {
             var up = toHmd.TransformDirection(new Vec3(0, 1, 0));
             result &= Vec3.AngleDeg(up, reference) <= settings.HeadTiltToleranceDeg * factor;

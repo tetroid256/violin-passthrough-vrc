@@ -2,7 +2,6 @@ using System.Reflection;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Text.RegularExpressions;
 using ViolinPassthrough.Anchor;
 using ViolinPassthrough.Calibration;
 using ViolinPassthrough.Logging;
@@ -30,7 +29,7 @@ public interface IConfigSource
 /// 変更の検出は FileSystemWatcher と更新日時のポーリングの両方で行う（どちらかが取りこぼしても1秒以内に反映するため）。
 /// 読み込み自体はメインループから <see cref="TryReload"/> で行うので、スレッドをまたがない。
 /// </summary>
-public sealed partial class ConfigStore : IConfigSource, IDisposable
+public sealed class ConfigStore : IConfigSource, IDisposable
 {
     public const string DefaultConfigResourceName = "ViolinPassthrough.config.default.json";
 
@@ -70,8 +69,11 @@ public sealed partial class ConfigStore : IConfigSource, IDisposable
 
     public int InvalidCount { get; private set; }
 
-    /// <summary>キャリブレーションで書き換える前の内容を残すファイル。</summary>
+    /// <summary>キャリブレーションで書き換える直前の内容を残すファイル（毎回上書き）。</summary>
     public string BackupPath => FilePath + ".bak";
+
+    /// <summary>最初にキャリブレーションで書き換える前の内容を残すファイル（一度だけ作る）。</summary>
+    public string OriginalPath => FilePath + ".orig";
 
     /// <summary>同梱の既定の設定（config.default.json）。</summary>
     public static string ReadDefaultConfigText()
@@ -250,10 +252,12 @@ public sealed partial class ConfigStore : IConfigSource, IDisposable
     /// <summary>
     /// キャリブレーションの結果を設定ファイルに書き込む（DESIGN.md §15.2）。
     /// 領域の position / rotationEulerDeg / widthMeters と、auto.leftHandPosition / auto.headUp を書き換える。
-    /// 書く前に元のファイルを .bak に残し、一時ファイルに書いてから置き換える。JSON のコメントは消える。
+    /// 書く前の内容を .bak に残す。最初に書き換える前の内容（コメント入りの手書きのもの）は .orig に一度だけ残す。
+    /// 一時ファイルに書いてから置き換える。JSON のコメントは消える。
     /// </summary>
     public bool TryApplyCalibration(CalibrationResult result, out string error)
     {
+        var temp = FilePath + ".tmp";
         try
         {
             string text;
@@ -261,6 +265,15 @@ public sealed partial class ConfigStore : IConfigSource, IDisposable
             using (var reader = new StreamReader(stream))
             {
                 text = reader.ReadToEnd();
+            }
+
+            // 今のファイルが壊れていたら、書き換えずに直してもらう（関係ない項目のエラーを結果のせいにしない）。
+            var current = ConfigValidator.Parse(text);
+            if (!current.Success)
+            {
+                error = "FIX CONFIG FIRST";
+                Log.Warn("Calibration not written because the config file has errors: " + string.Join("; ", current.Errors));
+                return false;
             }
 
             var json = UpdateCalibrationJson(text, result, out error);
@@ -277,8 +290,12 @@ public sealed partial class ConfigStore : IConfigSource, IDisposable
                 return false;
             }
 
+            if (!File.Exists(OriginalPath))
+            {
+                File.Copy(FilePath, OriginalPath);
+            }
+
             File.Copy(FilePath, BackupPath, overwrite: true);
-            var temp = FilePath + ".tmp";
             File.WriteAllText(temp, json);
             File.Move(temp, FilePath, overwrite: true);
             MarkDirty();
@@ -286,11 +303,23 @@ public sealed partial class ConfigStore : IConfigSource, IDisposable
             error = string.Empty;
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception ex)
         {
+            // 同じ項目名の大文字・小文字違いの重複（JsonNode が例外を出す）なども含め、落とさずに知らせる。
             Log.Error("Failed to write the calibration", ex);
-            error = "CANNOT WRITE CONFIG";
+            error = "CANNOT WRITE";
             return false;
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(temp);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Log.Debug($"Could not delete {temp}: {ex.Message}");
+            }
         }
     }
 
@@ -328,28 +357,80 @@ public sealed partial class ConfigStore : IConfigSource, IDisposable
         auto["leftHandPosition"] = Vector(result.LeftHandPosition, 3);
         auto["headUp"] = Vector(result.HeadUp, 3);
 
-        var json = root.ToJsonString(new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        });
-
-        // 数値だけの配列は1行にまとめる（手で編集しやすいように）。
-        json = NumberArrayPattern().Replace(json, m =>
-            "[" + string.Join(", ", m.Groups[1].Value.Split(',').Select(v => v.Trim())) + "]");
-
+        var builder = new System.Text.StringBuilder();
+        WriteJson(builder, root, 0);
+        builder.Append(Environment.NewLine);
         error = string.Empty;
-        return json + Environment.NewLine;
+        return builder.ToString();
     }
+
+    /// <summary>
+    /// 2 文字下げで書く。数値だけの配列は1行にまとめる（手で編集しやすいように）。
+    /// </summary>
+    private static void WriteJson(System.Text.StringBuilder output, JsonNode? node, int depth)
+    {
+        var indent = new string(' ', (depth + 1) * 2);
+        var closing = new string(' ', depth * 2);
+        switch (node)
+        {
+            case JsonObject obj:
+                if (obj.Count == 0)
+                {
+                    output.Append("{}");
+                    return;
+                }
+
+                output.Append('{').Append(Environment.NewLine);
+                var i = 0;
+                foreach (var (key, value) in obj)
+                {
+                    output.Append(indent).Append(JsonSerializer.Serialize(key, WriteOptions)).Append(": ");
+                    WriteJson(output, value, depth + 1);
+                    output.Append(++i < obj.Count ? "," : string.Empty).Append(Environment.NewLine);
+                }
+
+                output.Append(closing).Append('}');
+                return;
+
+            case JsonArray array when array.All(e => e is JsonValue v && v.GetValueKind() == JsonValueKind.Number):
+                output.Append('[').Append(string.Join(", ", array.Select(e => e!.ToJsonString(WriteOptions)))).Append(']');
+                return;
+
+            case JsonArray array:
+                if (array.Count == 0)
+                {
+                    output.Append("[]");
+                    return;
+                }
+
+                output.Append('[').Append(Environment.NewLine);
+                for (var j = 0; j < array.Count; j++)
+                {
+                    output.Append(indent);
+                    WriteJson(output, array[j], depth + 1);
+                    output.Append(j + 1 < array.Count ? "," : string.Empty).Append(Environment.NewLine);
+                }
+
+                output.Append(closing).Append(']');
+                return;
+
+            case null:
+                output.Append("null");
+                return;
+
+            default:
+                output.Append(node.ToJsonString(WriteOptions));
+                return;
+        }
+    }
+
+    private static readonly JsonSerializerOptions WriteOptions = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     private static JsonArray Vector(Vec3 v, int digits) =>
         new(Round(v.X, digits), Round(v.Y, digits), Round(v.Z, digits));
 
     // -0 を 0 にしてから丸める（"-0" と書かないため）。
     private static JsonNode Round(double value, int digits) => JsonValue.Create(Math.Round(value, digits) + 0.0);
-
-    [GeneratedRegex(@"\[\s*(-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?)*)\s*\]")]
-    private static partial Regex NumberArrayPattern();
 
     private (DateTime WriteTimeUtc, long Length)? GetStamp()
     {

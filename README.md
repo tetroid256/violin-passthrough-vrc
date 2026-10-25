@@ -90,8 +90,8 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 ### キャリブレーション（構えて窓を合わせる）
 1. アバターメニューの **HandPassthroughCalibrate** を ON にする。ビープ音と視界の文字（`CALIBRATE 5` … `1`）でカウントダウンが始まる。
 2. その間に演奏の姿勢をとる: **左手は 1st ポジション、右手は弓の元（フロッグ）を駒の近くの弦に置く**。
-3. 0 になった瞬間の両手の位置から、`calibration.regionId`（既定 `fingerboard`）の窓の位置・角度・長さを計算して config.json に書き込む（元の内容は `config.json.bak` に残る。JSON のコメントは消える）。
-4. `CALIBRATED` と出て、5 秒間、新しい窓が赤いデバッグ表示で見える。失敗したら `CAL FAILED: ...` と理由が出て、設定は変わらない。
+3. 0 になった瞬間の両手の位置から、`calibration.regionId`（既定 `fingerboard`）の窓の位置・角度・長さを計算して config.json に書き込む。窓は「目から見て」両手を覆うように置く（近い弓の手も、遠い左手も窓に入る）。直前の内容は `config.json.bak`、最初の内容（コメント入りの手書きのもの）は `config.json.orig` に残る。書き込んだ config.json からは JSON のコメントが消える。設定ファイルにエラーがあるときは書き込まない（`CAL FAIL: FIX CONFIG FIRST`）。
+4. `CALIBRATED` と出て、5 秒間、新しい窓が赤いデバッグ表示で見える。失敗したら `CAL FAIL: ...` と理由が出て、設定は変わらない。
 5. カウントダウン中にメニューを OFF にすると取り消す。
 
 窓の高さ・形・余白は変えない（必要なら手で直す）。窓を長めにしたいときは `calibration.padMeters`（両端に足す長さ）を増やす。
@@ -99,11 +99,11 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 ### 自動モード（構えたときだけ表示）
 アバターメニューの **HandPassthroughAuto** を ON にすると、HandPassthrough が ON でも、**楽器を構えているときだけ** 窓を出す。楽器を下ろして 2 秒たつと消え、構えて 0.3 秒たつと出る。
 - 判定: HMD から見た左手が `auto.leftHandPosition` から `auto.radiusMeters`（0.15 m）以内。キャリブレーションでこの位置も記録される。
-- ハンドトラッキングで左手を見失いやすいときは、`"useHeadTilt": true` にすると頭の傾き（顎当てに顎を乗せた姿勢）でも判定できる（キャリブレーションを一度してから使う。`useLeftHand` と両方 true なら両方を満たすとき）。
-- 姿勢が取れない間は直前の判定を保つ（急に消えない）。
+- ハンドトラッキングで左手を見失いやすいときは、`"useHeadTilt": true` にすると頭の傾き（顎当てに顎を乗せた姿勢）でも判定できる（キャリブレーションを一度してから使う）。`useLeftHand` と両方 true なら両方を満たすときで、左手を見失っている間は頭の傾きだけで決める。
+- 姿勢が取れない間は直前の判定を保つ（演奏中に手を見失っても急に消えない）。ただし、楽器を下ろし始めてから手を見失ったときは、2 秒たてば消える。
 
 ### 視界の通知
-カウントダウンと結果のほか、`AUTO ON` / `AUTO OFF`、`PRESET ...`、自動モード中の `ON - RAISE TO SHOW`、設定ファイルの `CONFIG RELOADED` / `CONFIG ERROR - SEE LOG` を視界の少し上に短く出す。結果以外を出したくなければ `"feedback": { "toasts": false }`。
+カウントダウンと結果のほか、`AUTO ON` / `AUTO OFF`、`PRESET ...`、自動モード中の `ON - RAISE TO SHOW`、設定ファイルの `CONFIG RELOADED` / `CONFIG ERROR`（理由はログ） を視界の少し上に短く出す。結果以外を出したくなければ `"feedback": { "toasts": false }`。
 
 | 設定 | 既定 | 意味 |
 |---|---|---|
@@ -119,7 +119,7 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `calibration.previewSeconds` | 5 | 結果を赤く見せる時間 |
 | `calibration.beep` | true | ビープ音（PC の既定の音声出力。VD 経由でヘッドセットに聞こえる） |
 | `feedback.toasts` | true | 結果以外の通知も出すか |
-| `feedback.position` / `feedback.textHeightMeters` | [0, 0.08, -0.5] / 0.025 | 通知の位置（HMD 基準）と文字の高さ |
+| `feedback.position` / `feedback.textHeightMeters` | [0, 0.08, -0.5] / 0.015 | 通知の位置（HMD 基準）と文字の高さ |
 
 ## OSC（VRChat のアバターメニューで切り替え）
 

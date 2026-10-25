@@ -143,7 +143,7 @@ public class MainLoopPhase6Tests
         Run(TimeSpan.FromSeconds(5.05));
 
         Assert.Empty(_config.Calibrations);
-        Assert.Equal("CAL FAILED: NO LEFT HAND", _status.CurrentText);
+        Assert.Equal("CAL FAIL: NO LEFT HAND", _status.CurrentText);
         Assert.Equal(BeepKind.Error, _beeper.Beeps[^1]);
         Assert.Contains($"{Calibrate} False", Osc.TakeSent());
         Assert.False(_loop.Previewing);
@@ -161,19 +161,19 @@ public class MainLoopPhase6Tests
         t.Run(TimeSpan.FromSeconds(5.05));
 
         Assert.Empty(t._config.Calibrations);
-        Assert.Equal("CAL FAILED: REGION IS NOT HMD", t._status.CurrentText);
+        Assert.Equal("CAL FAIL: NOT HMD REGION", t._status.CurrentText);
     }
 
     [Fact]
     public void Calibration_WriteFailure_IsReported()
     {
-        _config.CalibrationError = "CANNOT WRITE CONFIG";
+        _config.CalibrationError = "CANNOT WRITE";
         _loop.Tick();
         Receive(Calibrate, true);
 
         Run(TimeSpan.FromSeconds(5.05));
 
-        Assert.Equal("CAL FAILED: CANNOT WRITE CONFIG", _status.CurrentText);
+        Assert.Equal("CAL FAIL: CANNOT WRITE", _status.CurrentText);
         Assert.False(_loop.Previewing);
     }
 
@@ -284,6 +284,43 @@ public class MainLoopPhase6Tests
     }
 
     [Fact]
+    public void ConfigErrorAtStartup_IsShownOnTheFirstFrame()
+    {
+        _config.InvalidCount = 1;
+        var loop = new MainLoop(_lifecycle, _config, _state, new MaskOverlaySet(_factory.Create), CreateOsc, _time, _status, _beeper);
+
+        loop.Tick();
+
+        Assert.Equal("CONFIG ERROR", _status.CurrentText);
+    }
+
+    [Fact]
+    public void PresetWithUnsupportedCharacters_IsShownByIndex()
+    {
+        var t = With("\"whole\": [\"fingerboard\", \"body\"]", "\"全体\": [\"fingerboard\", \"body\"]");
+        t._loop.Tick();
+
+        t.Receive(Preset, 1);
+
+        Assert.Equal("PRESET 1", t._status.CurrentText);
+    }
+
+    [Fact]
+    public void CalibrationResult_IsNotOverwrittenByTheReload_EvenWithoutPreview()
+    {
+        var t = With("\"previewSeconds\": 5", "\"previewSeconds\": 0");
+        t._loop.Tick();
+        t.Receive(Calibrate, true);
+        t.Run(TimeSpan.FromSeconds(5.05));
+        Assert.False(t._loop.Previewing);
+
+        t._config.Publish(t._config.Current);
+        t._loop.Tick();
+
+        Assert.Equal("CALIBRATED", t._status.CurrentText);
+    }
+
+    [Fact]
     public void ConfigError_IsShown()
     {
         _loop.Tick();
@@ -291,7 +328,7 @@ public class MainLoopPhase6Tests
         _config.InvalidCount++;
         _loop.Tick();
 
-        Assert.Equal("CONFIG ERROR - SEE LOG", _status.CurrentText);
+        Assert.Equal("CONFIG ERROR", _status.CurrentText);
     }
 
     [Fact]

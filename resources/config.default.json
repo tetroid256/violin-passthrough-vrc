@@ -65,7 +65,7 @@
   "feedback": {
     "toasts": true,
     "position": [0, 0.08, -0.5],
-    "textHeightMeters": 0.025
+    "textHeightMeters": 0.015
   },
   "logLevel": "Info"
 }

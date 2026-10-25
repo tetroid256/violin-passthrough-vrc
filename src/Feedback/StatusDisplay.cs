@@ -33,13 +33,25 @@ public sealed class StatusDisplay : IDisposable
 
     public static readonly (byte R, byte G, byte B, byte A) ErrorColor = (255, 110, 90, 255);
 
+    /// <summary>キー色に近いときに代わりに使う色（種類ごと、上から順に試す）。</summary>
+    private static readonly Dictionary<StatusKind, (byte R, byte G, byte B, byte A)[]> Candidates = new()
+    {
+        [StatusKind.Info] = new[] { InfoColor, ((byte)255, (byte)230, (byte)80, (byte)255), ((byte)80, (byte)200, (byte)255, (byte)255) },
+        [StatusKind.Success] = new[] { SuccessColor, ((byte)120, (byte)210, (byte)255, (byte)255), InfoColor },
+        [StatusKind.Error] = new[] { ErrorColor, ((byte)255, (byte)170, (byte)0, (byte)255), InfoColor },
+    };
+
+    /// <summary>文字の色とキー色がこれより近い（RGB の距離）と、別の色にする。</summary>
+    private const double MinDistanceFromKey = 120;
+
     /// <summary>背景（半透明の黒）。</summary>
     public static readonly (byte R, byte G, byte B, byte A) BackgroundColor = (0, 0, 0, 170);
 
     private readonly IStatusOverlay? _overlay;
     private readonly TimeProvider _time;
-    private FeedbackSettings _settings = new(true, new Vec3(0, 0.08, -0.5), 0.025);
+    private FeedbackSettings _settings = new(true, new Vec3(0, 0.08, -0.5), 0.015);
     private uint _sortOrder = 101;
+    private Rgb _keyColor = new(255, 0, 255);
     private (string Text, StatusKind Kind)? _shown;
     private long? _hideAt;
 
@@ -52,10 +64,11 @@ public sealed class StatusDisplay : IDisposable
     /// <summary>今表示している文字列（テスト・ログ用）。</summary>
     public string? CurrentText => _shown?.Text;
 
-    public void Configure(FeedbackSettings settings, uint maskSortOrder)
+    public void Configure(FeedbackSettings settings, uint maskSortOrder, Rgb keyColor)
     {
-        var changed = settings != _settings || maskSortOrder + 1 != _sortOrder;
+        var changed = settings != _settings || maskSortOrder + 1 != _sortOrder || keyColor != _keyColor;
         _settings = settings;
+        _keyColor = keyColor;
         _sortOrder = maskSortOrder == uint.MaxValue ? uint.MaxValue : maskSortOrder + 1;
         if (changed && _shown is { } shown)
         {
@@ -104,6 +117,27 @@ public sealed class StatusDisplay : IDisposable
 
     public void Dispose() => _overlay?.Dispose();
 
+    /// <summary>文字の色。キー色に近いと文字が抜けて読めなくなるので、離れた色を選ぶ。</summary>
+    public static (byte R, byte G, byte B, byte A) ColorFor(StatusKind kind, Rgb keyColor)
+    {
+        var candidates = Candidates[kind];
+        foreach (var color in candidates)
+        {
+            if (Distance(color, keyColor) >= MinDistanceFromKey)
+            {
+                return color;
+            }
+        }
+
+        return candidates.MaxBy(c => Distance(c, keyColor));
+    }
+
+    private static double Distance((byte R, byte G, byte B, byte A) color, Rgb key)
+    {
+        double dr = color.R - key.R, dg = color.G - key.G, db = color.B - key.B;
+        return Math.Sqrt(dr * dr + dg * dg + db * db);
+    }
+
     private void Draw(string text, StatusKind kind)
     {
         _shown = (text, kind);
@@ -112,13 +146,7 @@ public sealed class StatusDisplay : IDisposable
             return;
         }
 
-        var color = kind switch
-        {
-            StatusKind.Success => SuccessColor,
-            StatusKind.Error => ErrorColor,
-            _ => InfoColor,
-        };
-        var texture = BitmapFont.Render(text, color, BackgroundColor);
+        var texture = BitmapFont.Render(text, ColorFor(kind, _keyColor), BackgroundColor);
 
         // 文字の高さ（GlyphHeight の点）が TextHeightMeters になるように、板の幅を決める。
         var metersPerDot = _settings.TextHeightMeters / BitmapFont.GlyphHeight;

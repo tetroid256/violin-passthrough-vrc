@@ -96,6 +96,57 @@ public class PostureDetectorTests
     }
 
     [Fact]
+    public void LoweringThenLosingTheHand_StillHidesAfterTheExitDelay()
+    {
+        // 楽器を下ろす途中で手がカメラの外に出る: 外れ始めた時点から 2 秒で隠す。
+        var detector = new PostureDetector(_time);
+        for (var i = 0; i < 5; i++)
+        {
+            Step(detector, Settings(), Tracking.Make(Hmd, Reference, null));
+        }
+
+        var lowered = Tracking.Make(Hmd, new Vec3(-0.2, -0.6, -0.1), null);
+        for (var i = 0; i < 8; i++)
+        {
+            Step(detector, Settings(), lowered);
+        }
+
+        var lost = Tracking.Make(Hmd, null, null);
+        var results = Enumerable.Range(0, 20).Select(_ => Step(detector, Settings(), lost)).ToList();
+
+        Assert.True(results[0]);
+        Assert.False(results[^1]);
+        Assert.False(detector.InPosture);
+    }
+
+    [Fact]
+    public void LosingTheHandBeforeLeaving_IsNotCountedAsAnExit()
+    {
+        var detector = new PostureDetector(_time);
+        for (var i = 0; i < 5; i++)
+        {
+            Step(detector, Settings(), Tracking.Make(Hmd, Reference, null));
+        }
+
+        // 構えたまま手を見失う（ネックに隠れるなど）: ずっと表示のまま。
+        for (var i = 0; i < 100; i++)
+        {
+            Assert.True(Step(detector, Settings(), Tracking.Make(Hmd, null, null)));
+        }
+    }
+
+    [Fact]
+    public void BothConditions_HandLost_HeadTiltDecides()
+    {
+        var tilted = Tracking.StandingHmd(rollDeg: 20);
+        var headUp = tilted.Inverse().TransformDirection(new Vec3(0, 1, 0));
+        var settings = Settings(leftHand: true, headTilt: true, headUp: headUp);
+
+        Assert.Equal(true, PostureDetector.Evaluate(settings, Tracking.Make(tilted, null, null), false));
+        Assert.Equal(false, PostureDetector.Evaluate(settings, Tracking.Make(Tracking.StandingHmd(), null, null), false));
+    }
+
+    [Fact]
     public void WorksRegardlessOfWhereThePlayerFaces()
     {
         foreach (var yaw in new[] { 0.0, 90, 180, -120 })
