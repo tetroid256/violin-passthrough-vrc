@@ -35,3 +35,19 @@ jobs:
           path: publish/
           if-no-files-found: error
           retention-days: 14
+
+      # Unity はここでは動かせないので、パッケージの JSON（package.json と asmdef）が壊れていないかだけ確かめる。
+      - name: Check Unity package JSON
+        shell: pwsh
+        run: |
+          Get-ChildItem unity -Recurse -Include *.json, *.asmdef | ForEach-Object {
+            Get-Content $_.FullName -Raw | ConvertFrom-Json | Out-Null
+            Write-Host "OK $($_.FullName)"
+          }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ViolinPassthrough-unity-package
+          path: unity/
+          if-no-files-found: error
+          retention-days: 14
