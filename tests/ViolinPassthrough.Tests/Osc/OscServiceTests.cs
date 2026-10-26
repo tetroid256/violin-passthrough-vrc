@@ -93,6 +93,8 @@ public class OscServiceTests
                 ("/avatar/parameters/HandPassthrough", "T"),
                 ("/avatar/parameters/HandPassthroughPreset", "i"),
                 ("/avatar/parameters/HandPassthroughDebug", "T"),
+                ("/avatar/parameters/HandPassthroughAutoMethod", "i"),
+                ("/avatar/parameters/HandPassthroughViolin", "i"),
             })
             {
                 using var node = System.Text.Json.JsonDocument.Parse(await http.GetStringAsync(baseUrl + path));

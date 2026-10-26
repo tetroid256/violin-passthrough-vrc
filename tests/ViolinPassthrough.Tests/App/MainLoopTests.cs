@@ -233,14 +233,20 @@ public class MainLoopOscTests
     private const string Auto = "/avatar/parameters/HandPassthroughAuto";
     private const string Calibrate = "/avatar/parameters/HandPassthroughCalibrate";
 
+    private const string AutoMethod = "/avatar/parameters/HandPassthroughAutoMethod";
+    private const string Violin = "/avatar/parameters/HandPassthroughViolin";
+    private const string ViolinState = "/avatar/parameters/HandPassthroughViolinState";
+
     private static readonly string[] AllOff =
     {
         $"{Enabled} False", $"{Preset} 0", $"{Debug} False", $"{Auto} False", $"{Calibrate} False",
+        $"{AutoMethod} 0", $"{Violin} 0", $"{ViolinState} 0",
     };
 
     private static readonly string[] EnabledOnly =
     {
         $"{Enabled} True", $"{Preset} 0", $"{Debug} False", $"{Auto} False", $"{Calibrate} False",
+        $"{AutoMethod} 0", $"{Violin} 0", $"{ViolinState} 0",
     };
 
     private readonly FakeLifecycle _lifecycle = new();

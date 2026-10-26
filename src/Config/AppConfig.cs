@@ -135,6 +135,15 @@ public sealed class OscParametersConfig
     public string Auto { get; set; } = "HandPassthroughAuto";
 
     public string Calibrate { get; set; } = "HandPassthroughCalibrate";
+
+    /// <summary>自動モードの判定方法（Int: 0 = 左手、1 = 左手と頭の傾き、2 = 頭の傾き）。</summary>
+    public string AutoMethod { get; set; } = "HandPassthroughAutoMethod";
+
+    /// <summary>バイオリンのモデルの扱い（Int: 0 = しまう、1 = 持つ、2 = 構える）。メニューから受け取る。</summary>
+    public string Violin { get; set; } = "HandPassthroughViolin";
+
+    /// <summary>バイオリンのモデルの状態（Int: 0 = しまう、1 = 持つ、2 = 構える）。送るだけ。アバターでは同期する。</summary>
+    public string ViolinState { get; set; } = "HandPassthroughViolinState";
 }
 
 public sealed class AutoConfig
@@ -152,7 +161,7 @@ public sealed class AutoConfig
     /// <summary>HMD から見た、構えたときの左手（または <see cref="DeviceSerial"/> のデバイス）の位置（キャリブレーションで書き込む）。</summary>
     public double[]? LeftHandPosition { get; set; } = { -0.35, -0.10, -0.35 };
 
-    /// <summary>HMD から見た、構えたときの「上」の向き（キャリブレーションで書き込む）。</summary>
+    /// <summary>HMD から見た、構えたときの「上」の向き（キャリブレーションで書き込む）。無ければ頭の傾きでは判定しない。</summary>
     public double[]? HeadUp { get; set; }
 
     public double RadiusMeters { get; set; } = 0.15;

@@ -42,7 +42,10 @@
       "preset": "HandPassthroughPreset",
       "debug": "HandPassthroughDebug",
       "auto": "HandPassthroughAuto",
-      "calibrate": "HandPassthroughCalibrate"
+      "calibrate": "HandPassthroughCalibrate",
+      "autoMethod": "HandPassthroughAutoMethod",
+      "violin": "HandPassthroughViolin",
+      "violinState": "HandPassthroughViolinState"
     }
   },
   "auto": {

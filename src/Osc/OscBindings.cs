@@ -24,7 +24,15 @@ public enum OscApplyResult
 }
 
 /// <summary>VRChat 側が今持っているはずの値。送り返すかどうかの判定に使う。</summary>
-public sealed record AvatarParameterValues(bool? Enabled, int? PresetIndex, bool? Debug, bool? Auto = null, bool? Calibrate = null)
+public sealed record AvatarParameterValues(
+    bool? Enabled,
+    int? PresetIndex,
+    bool? Debug,
+    bool? Auto = null,
+    bool? Calibrate = null,
+    int? AutoMethod = null,
+    int? Violin = null,
+    int? ViolinState = null)
 {
     public static AvatarParameterValues Unknown { get; } = new(null, null, null);
 }
@@ -44,6 +52,9 @@ public sealed class OscBindings
         DebugAddress = ParameterPrefix + settings.DebugParameter;
         AutoAddress = ParameterPrefix + settings.AutoParameter;
         CalibrateAddress = ParameterPrefix + settings.CalibrateParameter;
+        AutoMethodAddress = ParameterPrefix + settings.AutoMethodParameter;
+        ViolinAddress = ParameterPrefix + settings.ViolinParameter;
+        ViolinStateAddress = ParameterPrefix + settings.ViolinStateParameter;
     }
 
     public string EnabledAddress { get; }
@@ -56,11 +67,19 @@ public sealed class OscBindings
 
     public string CalibrateAddress { get; }
 
+    public string AutoMethodAddress { get; }
+
+    public string ViolinAddress { get; }
+
+    /// <summary>送るだけ（アバターのアニメーターが読む）。VRChat から来ても受け取らない。</summary>
+    public string ViolinStateAddress { get; }
+
     /// <summary>受け取るアドレス。これ以外は受信時に捨てる。</summary>
     public IReadOnlySet<string> ReceiveAddresses =>
         new HashSet<string>(StringComparer.Ordinal)
         {
-            EnabledAddress, PresetAddress, DebugAddress, AutoAddress, CalibrateAddress, AvatarChangeAddress,
+            EnabledAddress, PresetAddress, DebugAddress, AutoAddress, CalibrateAddress, AutoMethodAddress, ViolinAddress,
+            AvatarChangeAddress,
         };
 
     /// <summary>
@@ -173,6 +192,53 @@ public sealed class OscBindings
             return calibrate ? OscApplyResult.CalibrationRequested : OscApplyResult.CalibrationCancelled;
         }
 
+        if (message.Address == AutoMethodAddress)
+        {
+            if (!TryGetInt(argument, out var value))
+            {
+                return Unsupported(message);
+            }
+
+            vrchat = vrchat with { AutoMethod = value };
+            if (!Enum.IsDefined(typeof(AutoMethod), value))
+            {
+                // 範囲外の値は、今の値を送り返してメニューを直す。
+                Log.Warn($"Auto method {value} from OSC is out of range (0-2); ignored.");
+                return OscApplyResult.None;
+            }
+
+            if (!state.SetAutoMethod((AutoMethod)value))
+            {
+                return OscApplyResult.None;
+            }
+
+            Log.Info($"Auto method changed to {(AutoMethod)value} (OSC).");
+            return OscApplyResult.StateChanged;
+        }
+
+        if (message.Address == ViolinAddress)
+        {
+            if (!TryGetInt(argument, out var value))
+            {
+                return Unsupported(message);
+            }
+
+            vrchat = vrchat with { Violin = value };
+            if (!Enum.IsDefined(typeof(ViolinMode), value))
+            {
+                Log.Warn($"Violin mode {value} from OSC is out of range (0-2); ignored.");
+                return OscApplyResult.None;
+            }
+
+            if (!state.SetViolinMode((ViolinMode)value))
+            {
+                return OscApplyResult.None;
+            }
+
+            Log.Info($"Violin mode changed to {(ViolinMode)value} (OSC).");
+            return OscApplyResult.StateChanged;
+        }
+
         return OscApplyResult.None;
     }
 
@@ -209,6 +275,21 @@ public sealed class OscBindings
             messages.Add(new OscMessage(CalibrateAddress, calibrating));
         }
 
+        if (vrchat.AutoMethod != (int)state.AutoMethod)
+        {
+            messages.Add(new OscMessage(AutoMethodAddress, (int)state.AutoMethod));
+        }
+
+        if (vrchat.Violin != (int)state.ViolinMode)
+        {
+            messages.Add(new OscMessage(ViolinAddress, (int)state.ViolinMode));
+        }
+
+        if (vrchat.ViolinState != (int)state.ViolinState)
+        {
+            messages.Add(new OscMessage(ViolinStateAddress, (int)state.ViolinState));
+        }
+
         return messages;
     }
 
@@ -216,7 +297,15 @@ public sealed class OscBindings
     public static AvatarParameterValues ValuesOf(PassthroughState state, ResolvedConfig config, bool calibrating = false)
     {
         var index = config.IndexOfPreset(state.ActivePreset);
-        return new AvatarParameterValues(state.Enabled, index >= 0 ? index : null, state.Debug, state.Auto, calibrating);
+        return new AvatarParameterValues(
+            state.Enabled,
+            index >= 0 ? index : null,
+            state.Debug,
+            state.Auto,
+            calibrating,
+            (int)state.AutoMethod,
+            (int)state.ViolinMode,
+            (int)state.ViolinState);
     }
 
     private static OscApplyResult Unsupported(OscMessage message)

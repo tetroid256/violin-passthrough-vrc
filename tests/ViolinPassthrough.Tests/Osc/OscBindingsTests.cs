@@ -10,6 +10,9 @@ public class OscBindingsTests
     private const string Debug = "/avatar/parameters/HandPassthroughDebug";
     private const string Auto = "/avatar/parameters/HandPassthroughAuto";
     private const string Calibrate = "/avatar/parameters/HandPassthroughCalibrate";
+    private const string AutoMethod = "/avatar/parameters/HandPassthroughAutoMethod";
+    private const string Violin = "/avatar/parameters/HandPassthroughViolin";
+    private const string ViolinState = "/avatar/parameters/HandPassthroughViolinState";
 
     private readonly OscBindings _bindings = new(TestConfigs.Default.Osc);
     private readonly PassthroughState _state = new(false, "fingerboard", false);
@@ -25,7 +28,7 @@ public class OscBindingsTests
         Assert.Equal(Preset, _bindings.PresetAddress);
         Assert.Equal(Debug, _bindings.DebugAddress);
         Assert.Equal(
-            new[] { "/avatar/change", Enabled, Auto, Calibrate, Debug, Preset },
+            new[] { "/avatar/change", Enabled, Auto, AutoMethod, Calibrate, Debug, Preset, Violin },
             _bindings.ReceiveAddresses.Order(StringComparer.Ordinal));
     }
 
@@ -133,7 +136,11 @@ public class OscBindingsTests
 
         var all = _bindings.BuildSyncMessages(_state, TestConfigs.Default, AvatarParameterValues.Unknown);
         Assert.Equal(
-            new[] { $"{Enabled} True", $"{Preset} 1", $"{Debug} False", $"{Auto} False", $"{Calibrate} False" },
+            new[]
+            {
+                $"{Enabled} True", $"{Preset} 1", $"{Debug} False", $"{Auto} False", $"{Calibrate} False",
+                $"{AutoMethod} 0", $"{Violin} 0", $"{ViolinState} 0",
+            },
             all.Select(m => m.ToString()));
 
         var known = OscBindings.ValuesOf(_state, TestConfigs.Default);
@@ -151,5 +158,67 @@ public class OscBindingsTests
         Assert.IsType<bool>(messages.Single(m => m.Address == Enabled).Arguments[0]);
         Assert.IsType<int>(messages.Single(m => m.Address == Preset).Arguments[0]);
         Assert.IsType<bool>(messages.Single(m => m.Address == Debug).Arguments[0]);
+    }
+
+    [Theory]
+    [InlineData(0, ViolinPassthrough.State.AutoMethod.LeftHand)]
+    [InlineData(1, ViolinPassthrough.State.AutoMethod.LeftHandAndHead)]
+    [InlineData(2, ViolinPassthrough.State.AutoMethod.Head)]
+    public void AutoMethod_IsSetFromTheMenu(int value, ViolinPassthrough.State.AutoMethod expected)
+    {
+        var result = Apply(AutoMethod, value);
+
+        Assert.Equal(expected == ViolinPassthrough.State.AutoMethod.LeftHand ? OscApplyResult.None : OscApplyResult.StateChanged, result);
+        Assert.Equal(expected, _state.AutoMethod);
+        Assert.Equal(value, _vrchat.AutoMethod);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(3)]
+    public void OutOfRangeValues_AreIgnored_AndTheMenuIsCorrected(int value)
+    {
+        Assert.Equal(OscApplyResult.None, Apply(AutoMethod, value));
+        Assert.Equal(OscApplyResult.None, Apply(Violin, value));
+
+        Assert.Equal(ViolinPassthrough.State.AutoMethod.LeftHand, _state.AutoMethod);
+        Assert.Equal(ViolinMode.Away, _state.ViolinMode);
+        var messages = _bindings.BuildSyncMessages(_state, TestConfigs.Default, _vrchat).Select(m => m.ToString()).ToList();
+        Assert.Contains($"{AutoMethod} 0", messages);
+        Assert.Contains($"{Violin} 0", messages);
+    }
+
+    [Fact]
+    public void ViolinMode_IsSetFromTheMenu_AndTheStateIsSent()
+    {
+        var known = OscBindings.ValuesOf(_state, TestConfigs.Default);
+
+        Assert.Equal(OscApplyResult.StateChanged, Apply(Violin, 1));
+        Assert.Equal(ViolinMode.Hold, _state.ViolinMode);
+
+        // メニューの値（Violin）は VRChat が持っているので、状態（ViolinState）だけ送る。
+        var known2 = known with { Violin = 1 };
+        Assert.Equal(new[] { $"{ViolinState} 1" }, _bindings.BuildSyncMessages(_state, TestConfigs.Default, known2).Select(m => m.ToString()));
+
+        _state.SetInPosture(true);
+        Assert.Equal(new[] { $"{ViolinState} 2" }, _bindings.BuildSyncMessages(_state, TestConfigs.Default, known2).Select(m => m.ToString()));
+    }
+
+    [Fact]
+    public void ViolinState_FromVrchat_IsNotAccepted()
+    {
+        // アニメーターが読むだけの出力。VRChat から来た値（自分が送った値のエコーなど）で状態を変えない。
+        Assert.DoesNotContain(ViolinState, _bindings.ReceiveAddresses);
+        Assert.Equal(OscApplyResult.None, Apply(ViolinState, 2));
+    }
+
+    [Fact]
+    public void NewParameters_AreSentAsInt()
+    {
+        var messages = _bindings.BuildSyncMessages(_state, TestConfigs.Default, AvatarParameterValues.Unknown);
+
+        Assert.IsType<int>(messages.Single(m => m.Address == AutoMethod).Arguments[0]);
+        Assert.IsType<int>(messages.Single(m => m.Address == Violin).Arguments[0]);
+        Assert.IsType<int>(messages.Single(m => m.Address == ViolinState).Arguments[0]);
     }
 }

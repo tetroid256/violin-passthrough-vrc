@@ -114,6 +114,11 @@ public sealed class PostureDetector
         var result = true;
 
         var useHeadTilt = settings.UseHeadTilt && settings.HeadUp is not null;
+        if (!settings.UseLeftHand && !useHeadTilt)
+        {
+            // 使える条件が無い（頭の傾きだけなのに基準が無い）。判定しない。
+            return null;
+        }
         if (settings.UseLeftHand)
         {
             var index = PostureDeviceIndex(settings, tracking, hands);
