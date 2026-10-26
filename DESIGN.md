@@ -247,7 +247,7 @@ Modular Avatar を使う場合は、同梱の Unity 用エディタ拡張でパ�
    - `HandPassthrough`（Bool、既定 false、**Synced のチェックを外す**。ローカル専用なので同期ビットを消費しない）
    - `HandPassthroughPreset`（Int、既定 0、Synced を外す）
    - `HandPassthroughDebug`（Bool、既定 false、Synced を外す）
-2. Expressions Menu に Toggle（HandPassthrough）、Toggle（Debug）、必要なら Radial/Sub Menu（Preset）を追加する。
+2. Expressions Menu に Toggle（HandPassthrough）、Toggle（Debug）、必要なら Sub Menu（Preset。中にプリセットごとの Toggle を置き、Value をプリセット番号にする）を追加する。Radial Puppet は Float を動かすので、Int の Preset には使えない。
 3. アニメーターの変更は不要（パラメータを OSC で読むだけ）。
 4. 使うアバターすべてに同じパラメータを入れる。
 5. VRChat の Action Menu → Options → OSC → Enabled を ON にする。アバターを更新したら OSC の Reset Config を実行する。

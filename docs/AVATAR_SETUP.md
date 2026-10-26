@@ -61,7 +61,8 @@ ViolinPassthrough OSC Menu   MA Parameters（5 個）+ MA Menu Installer + MA Me
 
 ### 補足
 
-- もう一度 **Add / Update** を押すと、`ViolinPassthrough OSC Menu` を作り直す（パラメータ名やプリセットを変えたとき）。**Remove**、オブジェクトの削除、Undo（Ctrl+Z）で元に戻せる。
+- もう一度 **Add / Update** を押すと、`ViolinPassthrough OSC Menu` を消して画面の設定から作り直す（パラメータ名やプリセットを変えたとき）。**ヒエラルキーで変えたトグルの名前、付けたアイコン、中に足したものは消える**（Undo（Ctrl+Z）で戻せる）。手で直したものを残したいときは、Add / Update を使わずに MA Parameters などを直接編集する。**Remove**、オブジェクトの削除、Undo で元に戻せる。
+- プリセットのトグルは、画面に並べた順にメニューに並ぶ。
 - トグルの表示名は GameObject の名前。ヒエラルキーで名前を変えればメニューの表示も変わる（ルートのサブメニューの名前だけは MA Menu Item の Name 欄）。
 - プリセットのトグル: 押すとその番号になる。選ばれているトグルをもう一度押すと 0（先頭のプリセット）に戻る（VRChat の Int パラメータと Toggle の仕様）。
 - アバターの Expression Parameters アセットに同じ名前のパラメータが既にあると、MA はそちらと合わせる（Synced / Saved はどちらかが ON なら ON、型が違うとエラー）。手で追加していたものは消しておく。ツールはこの場合に警告を出す。
@@ -108,10 +109,10 @@ ViolinPassthrough OSC Menu   MA Parameters（5 個）+ MA Menu Installer + MA Me
 
 - **メニューを操作しても本アプリが反応しない／メニューの表示が合わない**:
   - パラメータ名が `config.json` の `osc.parameters` と一致しているか確認する。
-  - VRChat は、アバターごとの OSC の設定（どのパラメータを送受信するか）をファイルに保存して使い回す。パラメータを追加・変更してアップロードし直しても、古い設定のままになることがある。Action Menu > Options > OSC > **Reset Config** を実行するか、VRChat を終了して `%USERPROFILE%\AppData\LocalLow\VRChat\VRChat\OSC\` の中にある、そのアバターの設定ファイル（`usr_...\Avatars\avtr_....json`）を消してから起動し直す。本アプリの既定（OSCQuery を使う）では起きにくいが、症状が出たら試す。
+  - VRChat は、アバターごとの OSC の設定（どのパラメータを送受信するか）をファイルに保存して使い回す。パラメータを追加・変更してアップロードし直しても、古い設定のままになることがある。アバターを更新したら、Action Menu > Options > OSC > **Reset Config** を実行する（DESIGN.md §9）。それでも直らなければ、VRChat を終了して `%USERPROFILE%\AppData\LocalLow\VRChat\VRChat\OSC\` の中にある、そのアバターの設定ファイル（`usr_...\Avatars\avtr_....json`）を消してから起動し直す。
 - **他のプレイヤーに見えないか心配**: パラメータはローカル専用なので同期されない。窓は自分の VR 表示にだけ出る。
 - **Modular Avatar のビルドでエラーが出る**: Console と MA のエラー表示を確認する。よくあるのは、アバターの Expression Parameters に同じ名前で型の違うパラメータがある場合（上の「補足」）。
 
 ## このエディタ拡張について
 
-Unity を動かせない環境で書いたもので、コンパイルは参照用の DLL とスタブ（Modular Avatar 1.18.7 のソース、VRChat SDK 3.7.6 の DLL）に対してしか確認していない。実際の Unity での動作は未確認。うまく動かないときは [Issue](https://github.com/tetroid256/violin-passthrough-vrc/issues) で知らせてほしい。
+Unity を動かせない環境で書いたもので、コンパイルは参照用の DLL（Unity 2021.1 の UnityEngine / UnityEditor、VRChat SDK 3.7.6）と、Modular Avatar 1.11.0 と 1.18.7 のソースから作ったものに対してしか確認していない。実際の Unity での動作は未確認。うまく動かないときは [Issue](https://github.com/tetroid256/violin-passthrough-vrc/issues) で知らせてほしい。

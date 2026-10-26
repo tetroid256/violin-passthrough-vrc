@@ -2,7 +2,8 @@
   "name": "ViolinPassthrough.Editor",
   "rootNamespace": "ViolinPassthrough.Editor",
   "references": [
-    "nadena.dev.modular-avatar.core"
+    "nadena.dev.modular-avatar.core",
+    "nadena.dev.ndmf.runtime"
   ],
   "includePlatforms": [
     "Editor"

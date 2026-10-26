@@ -65,7 +65,7 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `osc.useOscQuery` | OSCQuery でサービスを広告して受信する（推奨）。false なら `fallbackListenPort` で待ち受ける |
 | `osc.fallbackListenPort` | OSCQuery を使わない（使えない）ときの受信ポート。VRChat の送信先をこのポートにする必要がある |
 | `osc.vrchatSendHost` / `vrchatSendPort` | 状態を送り返す先（VRChat の受信ポート） |
-| `osc.parameters.*` | アバターパラメータ名（`enabled` = Bool、`preset` = Int、`debug` = Bool）。変えると OSC を再起動する |
+| `osc.parameters.*` | アバターパラメータ名（`enabled` = Bool、`preset` = Int、`debug` = Bool、`auto` = Bool、`calibrate` = Bool）。変えると OSC を再起動する |
 | `logLevel` | `Debug` / `Info` / `Warning` / `Error` |
 
 ### アンカー

@@ -164,7 +164,7 @@ namespace ViolinPassthrough.Editor
                 {
                     if (!CanRemove(go))
                     {
-                        r.Errors.Add($"The existing \"{RootObjectName}\" is part of a prefab and cannot be replaced here. Open the prefab and update or delete it there (or unpack the prefab).");
+                        r.Errors.Add($"The existing \"{RootObjectName}\" comes from a prefab. Replacing it here would leave removed/added prefab overrides, so this tool does not do it. Update it in the prefab that contains it (for a prefab variant, the base prefab), or unpack the prefab.");
                     }
                 }
 
@@ -314,7 +314,8 @@ namespace ViolinPassthrough.Editor
                 {
                     var presetMenu = CreateChild(root.transform, "Preset");
                     ConfigureSubMenu(Undo.AddComponent<ModularAvatarMenuItem>(presetMenu), "");
-                    foreach (var preset in s.presets.OrderBy(p => p.index))
+                    // ウィンドウに並べた順にメニューに並べる
+                    foreach (var preset in s.presets)
                     {
                         // Int パラメータに value = index の Toggle。選ぶとその番号になり、選択中を押し直すと 0 に戻る
                         AddToggle(presetMenu.transform, preset.label.Trim(), s.presetParameter, preset.index);
@@ -343,7 +344,7 @@ namespace ViolinPassthrough.Editor
             if (existing.Any(go => !CanRemove(go)))
             {
                 throw new InvalidOperationException(
-                    $"\"{RootObjectName}\" is part of a prefab. Open the prefab and delete it there (or unpack the prefab).");
+                    $"\"{RootObjectName}\" comes from a prefab. Delete it in the prefab that contains it (for a prefab variant, the base prefab), or unpack the prefab.");
             }
 
             Undo.IncrementCurrentGroup();

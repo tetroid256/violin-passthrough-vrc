@@ -5,7 +5,7 @@ VRChat のアバターに、Violin Passthrough を操作するメニュー（OSC
 ## 必要なもの
 
 - Unity 2022.3（VRChat の指定バージョン）
-- VRChat SDK - Avatars 3.5.0 以降
+- VRChat SDK - Avatars 3.7.4 以降（Modular Avatar 1.11.0 が必要とするもの）
 - Modular Avatar 1.11.0 以降、2.0 未満
 
 Modular Avatar か VRChat SDK が入っていない（またはバージョンが範囲外の）ときは、この拡張はコンパイルされず、メニューにも出ない。プロジェクトにコンパイルエラーは出ない。
@@ -45,4 +45,4 @@ ViolinPassthrough OSC Menu   MA Parameters + MA Menu Installer + サブメニュ
 
 ## 注意
 
-Unity を動かせない環境で書いたもので、コンパイルは参照用の DLL とスタブに対してしか確認していない。うまく動かないときは [Issue](https://github.com/tetroid256/violin-passthrough-vrc/issues) で知らせてほしい。
+Unity を動かせない環境で書いたもので、コンパイルは参照用の DLL（Unity 2021.1 の UnityEngine / UnityEditor、VRChat SDK 3.7.6）と、Modular Avatar 1.11.0 と 1.18.7 のソースから作ったものに対してしか確認していない。うまく動かないときは [Issue](https://github.com/tetroid256/violin-passthrough-vrc/issues) で知らせてほしい。

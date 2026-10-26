@@ -41,7 +41,7 @@ namespace ViolinPassthrough.Editor
             Open(MenuBuilder.FindAvatar(target));
         }
 
-        [MenuItem(GameObjectMenuPath, true)]
+        [MenuItem(GameObjectMenuPath, true, 10)]
         private static bool ValidateGameObjectMenu()
         {
             return MenuBuilder.FindAvatar(Selection.activeGameObject) != null;
@@ -66,8 +66,10 @@ namespace ViolinPassthrough.Editor
 
         private void OnSelectionChange()
         {
-            if (avatar != null) return;
-            avatar = MenuBuilder.FindAvatar(Selection.activeGameObject);
+            // ヒエラルキーで別のアバター（またはその中）を選んだら、対象もそれに変える（別のアバターに追加しないように）
+            var selected = MenuBuilder.FindAvatar(Selection.activeGameObject);
+            if (selected == null || selected == avatar) return;
+            avatar = selected;
             Repaint();
         }
 
@@ -105,8 +107,9 @@ namespace ViolinPassthrough.Editor
             if (hasExisting)
             {
                 EditorGUILayout.HelpBox(
-                    "This avatar already has \"" + MenuBuilder.RootObjectName + "\". Add / Update will replace it.",
-                    MessageType.Info);
+                    "This avatar already has \"" + MenuBuilder.RootObjectName + "\". Add / Update deletes it and builds it again " +
+                    "from the settings below: renamed toggles, icons and anything you added under it are lost (Ctrl+Z restores them).",
+                    MessageType.Warning);
             }
 
             DrawMenuSection();
@@ -178,7 +181,12 @@ namespace ViolinPassthrough.Editor
                 EditorGUILayout.EndHorizontal();
             }
 
-            if (removeAt >= 0) presets.RemoveAt(removeAt);
+            if (removeAt >= 0)
+            {
+                // 入力中の欄のフォーカスを外す（残すと、次の行の欄に古い文字が入る）
+                GUI.FocusControl(null);
+                presets.RemoveAt(removeAt);
+            }
 
             if (GUILayout.Button("Add preset"))
             {
