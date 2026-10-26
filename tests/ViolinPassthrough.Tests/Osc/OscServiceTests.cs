@@ -93,11 +93,17 @@ public class OscServiceTests
                 ("/avatar/parameters/HandPassthrough", "T"),
                 ("/avatar/parameters/HandPassthroughPreset", "i"),
                 ("/avatar/parameters/HandPassthroughDebug", "T"),
+                ("/avatar/parameters/HandPassthroughAutoMethod", "i"),
+                ("/avatar/parameters/HandPassthroughViolin", "i"),
             })
             {
                 using var node = System.Text.Json.JsonDocument.Parse(await http.GetStringAsync(baseUrl + path));
                 Assert.Equal(type, node.RootElement.GetProperty("TYPE").GetString());
             }
+
+            // 送るだけのパラメータは広告しない（VRChat から送られてきても受け取らない）。
+            using var violinState = await http.GetAsync(baseUrl + "/avatar/parameters/HandPassthroughViolinState");
+            Assert.NotEqual(System.Net.HttpStatusCode.OK, violinState.StatusCode);
         }
 
         using var sender = new UdpClient();

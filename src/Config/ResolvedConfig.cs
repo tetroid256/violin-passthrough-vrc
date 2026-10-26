@@ -18,7 +18,10 @@ public sealed record OscSettings(
     string PresetParameter,
     string DebugParameter,
     string AutoParameter,
-    string CalibrateParameter);
+    string CalibrateParameter,
+    string AutoMethodParameter = "HandPassthroughAutoMethod",
+    string ViolinParameter = "HandPassthroughViolin",
+    string ViolinStateParameter = "HandPassthroughViolinState");
 
 /// <summary>キャリブレーションの設定（検証済み）。</summary>
 public sealed record CalibrationSettings(

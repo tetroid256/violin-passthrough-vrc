@@ -515,6 +515,9 @@ public static partial class ConfigValidator
             ("debug", parameters.Debug),
             ("auto", parameters.Auto),
             ("calibrate", parameters.Calibrate),
+            ("autoMethod", parameters.AutoMethod),
+            ("violin", parameters.Violin),
+            ("violinState", parameters.ViolinState),
         };
         foreach (var (key, value) in names)
         {
@@ -526,7 +529,7 @@ public static partial class ConfigValidator
 
         if (names.Select(n => n.Item2).Distinct(StringComparer.Ordinal).Count() != names.Length)
         {
-            errors.Add("osc.parameters must use different names for enabled, preset, debug, auto and calibrate.");
+            errors.Add("osc.parameters must use a different name for each parameter.");
         }
 
         return new OscSettings(
@@ -538,7 +541,10 @@ public static partial class ConfigValidator
             parameters.Preset ?? string.Empty,
             parameters.Debug ?? string.Empty,
             parameters.Auto ?? string.Empty,
-            parameters.Calibrate ?? string.Empty);
+            parameters.Calibrate ?? string.Empty,
+            parameters.AutoMethod ?? string.Empty,
+            parameters.Violin ?? string.Empty,
+            parameters.ViolinState ?? string.Empty);
     }
 
     private static AutoSettings? ValidateAuto(AutoConfig? auto, List<string> errors)
@@ -550,7 +556,8 @@ public static partial class ConfigValidator
         }
 
         var before = errors.Count;
-        var leftHand = ValidateVector(auto.LeftHandPosition, "leftHandPosition", "auto", required: auto.UseLeftHand, errors);
+        // 判定方法は OSC でも切り替えるので、左手を使わない設定でも基準の位置は持っておく（null なら既定の位置）。
+        var leftHand = ValidateVector(auto.LeftHandPosition ?? new AutoConfig().LeftHandPosition, "leftHandPosition", "auto", required: false, errors);
         Vec3? headUp = null;
         if (auto.HeadUp is not null)
         {
@@ -563,10 +570,6 @@ public static partial class ConfigValidator
             {
                 headUp = up.Normalized();
             }
-        }
-        else if (auto.UseHeadTilt)
-        {
-            errors.Add("auto: useHeadTilt needs auto.headUp (run the calibration once to record it).");
         }
 
         var deviceSerial = auto.DeviceSerial?.Trim();

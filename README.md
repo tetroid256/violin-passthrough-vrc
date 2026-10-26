@@ -65,7 +65,7 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `osc.useOscQuery` | OSCQuery でサービスを広告して受信する（推奨）。false なら `fallbackListenPort` で待ち受ける |
 | `osc.fallbackListenPort` | OSCQuery を使わない（使えない）ときの受信ポート。VRChat の送信先をこのポートにする必要がある |
 | `osc.vrchatSendHost` / `vrchatSendPort` | 状態を送り返す先（VRChat の受信ポート） |
-| `osc.parameters.*` | アバターパラメータ名（`enabled` = Bool、`preset` = Int、`debug` = Bool、`auto` = Bool、`calibrate` = Bool）。変えると OSC を再起動する |
+| `osc.parameters.*` | アバターパラメータ名（`enabled` = Bool、`preset` = Int、`debug` = Bool、`auto` = Bool、`calibrate` = Bool、`autoMethod` = Int、`violin` = Int、`violinState` = Int）。変えると OSC を再起動する |
 | `logLevel` | `Debug` / `Info` / `Warning` / `Error` |
 
 ### アンカー
@@ -100,7 +100,7 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 ### 自動モード（構えたときだけ表示）
 アバターメニューの **HandPassthroughAuto** を ON にすると、HandPassthrough が ON でも、**楽器を構えているときだけ** 窓を出す。楽器を下ろして 2 秒たつと消え、構えて 0.3 秒たつと出る。
 - 判定: HMD から見た左手が `auto.leftHandPosition` から `auto.radiusMeters`（0.15 m）以内。キャリブレーションでこの位置も記録される。
-- ハンドトラッキングで左手を見失いやすいときは、`"useHeadTilt": true` にすると頭の傾き（顎当てに顎を乗せた姿勢）でも判定できる（キャリブレーションを一度してから使う）。`useLeftHand` と両方 true なら両方を満たすときで、左手を見失っている間は頭の傾きだけで決める。
+- ハンドトラッキングで左手を見失いやすいときは、頭の傾き（顎当てに顎を乗せた姿勢）でも判定できる（キャリブレーションを一度してから使う）。アバターメニューの **Auto Method**（`HandPassthroughAutoMethod`）で切り替える: 0 = 左手のみ、1 = 左手と頭の傾き（左手を見失っている間は頭の傾きだけ）、2 = 頭の傾きのみ。起動時の値は `auto.useLeftHand` / `auto.useHeadTilt` で決まる。キャリブレーション前に 1 か 2 を選ぶと `CALIBRATE FOR HEAD` と出て、左手で判定する。
 - 姿勢が取れない間は直前の判定を保つ（演奏中に手を見失っても急に消えない）。ただし、楽器を下ろし始めてから手を見失ったときは、2 秒たてば消える。
 
 ### 視界の通知
@@ -124,11 +124,18 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `feedback.position` / `feedback.textHeightMeters` | [0, 0.08, -0.5] / 0.015 | 通知の位置（HMD 基準）と文字の高さ |
 | `tracking.leftHandSerial` / `tracking.rightHandSerial` | null / null | 自動モードとキャリブレーションで、手の代わりに使うデバイス（手首に付けたトラッカー）のシリアル番号 |
 
+## バイオリンのモデル（Phase 8）
+
+VRChat でバイオリンのモデルを見せるときのために、本アプリがモデルの状態（0 = しまう、1 = 持つ、2 = 構える）を決めて `HandPassthroughViolinState` で送る（アバターでは同期する）。
+- アバターメニューの **Violin** で選ぶ: **Away**（しまう）/ **Hold**（持つ。構える・下ろすは自動で判定して 1 と 2 を切り替える）/ **Play**（判定を使わずに構えたまま）。楽器を持つと両手がふさがるので、持つ前に Hold にしておく。
+- 自動モードがオンなら、Play の間も窓が出る。
+- モデルの出し入れ・追従先の切り替え（持つ = 左手、構える = 頭か胸）・構えている間の左手の固定は、アバターのアニメーターで行う。アニメーターはまだツールで作らない（設計は DESIGN.md §17.3、手順は docs/AVATAR_SETUP.md）。
+
 ## 左手のトラッキングが外れるとき（Phase 7）
 
 指板を押さえる左手は、ハンドトラッキングが外れやすい。対策は [docs/TRACKING.md](docs/TRACKING.md) にまとめた。要点:
 - キャリブレーションは最後の 1 秒の平均を使うので、一瞬外れても失敗しない（設定不要）。
-- 機材なしなら、自動モードを頭の傾きで判定する（`"auto": { "useLeftHand": false, "useHeadTilt": true }`）。
+- 機材なしなら、アバターメニューの **Auto Method** で判定方法を **Hand + Head**（左手を見失っている間は頭の傾きで判定）か **Head**（頭の傾きだけ）にする（キャリブレーションを一度してから）。
 - 楽器に SteamVR のトラッカーを付けたら `auto.deviceSerial` に、手首に付けたら `tracking.leftHandSerial` にシリアル番号を書く（番号は `--console` のログの `Tracked devices:` に出る）。窓を楽器のトラッカーに追従させて（`"anchor": { "type": "device", "serial": "..." }`）キャリブレーションすることもできる。
 - 見つからないときは視界に `NO LEFT TRACKER` / `NO AUTO TRACKER` と出る。
 - VRChat のアバターの手が飛ぶ問題は、本アプリでは直せない（docs/TRACKING.md の 4）。
@@ -142,6 +149,9 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `/avatar/parameters/HandPassthroughDebug` | Bool | デバッグ表示 |
 | `/avatar/parameters/HandPassthroughAuto` | Bool | 自動モード（構えたときだけ表示） |
 | `/avatar/parameters/HandPassthroughCalibrate` | Bool | true でキャリブレーションを始める、カウントダウン中に false で取り消す。終わると本アプリが false に戻す |
+| `/avatar/parameters/HandPassthroughAutoMethod` | Int | 自動モードの判定方法（0 = 左手、1 = 左手と頭の傾き、2 = 頭の傾き） |
+| `/avatar/parameters/HandPassthroughViolin` | Int | バイオリンのモデルの扱い（0 = しまう、1 = 持つ、2 = 構える） |
+| `/avatar/parameters/HandPassthroughViolinState` | Int | **送るだけ**。バイオリンのモデルの状態（0 = しまう、1 = 持つ、2 = 構える）。アバターでは同期する（DESIGN.md §17） |
 | `/avatar/change` | String | アバター変更。状態は維持し、2 秒間は新しいアバターの既定値を無視してから、現在の状態を送り直す |
 
 起動時・OSC 設定の変更時・アバター変更時、それと設定ファイルで状態が変わったときに、現在の状態を VRChat（既定 127.0.0.1:9000）に送ってメニューの表示を合わせる。

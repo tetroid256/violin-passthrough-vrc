@@ -121,7 +121,7 @@ public class ConfigValidatorTests
     [InlineData("\"fallbackListenPort\": 9011", "\"fallbackListenPort\": 70000", "fallbackListenPort")]
     [InlineData("\"vrchatSendPort\": 9000", "\"vrchatSendPort\": 0", "vrchatSendPort")]
     [InlineData("\"vrchatSendHost\": \"127.0.0.1\"", "\"vrchatSendHost\": \"\"", "vrchatSendHost")]
-    [InlineData("\"debug\": \"HandPassthroughDebug\"", "\"debug\": \"HandPassthrough\"", "different names")]
+    [InlineData("\"debug\": \"HandPassthroughDebug\"", "\"debug\": \"HandPassthrough\"", "different name")]
     [InlineData("\"debug\": \"HandPassthroughDebug\"", "\"debug\": \"Hand Debug\"", "osc.parameters.debug")]
     [InlineData("\"logLevel\": \"Info\"", "\"logLevel\": \"Verbose\"", "logLevel")]
     [InlineData("\"keyColor\": { \"r\": 255, \"g\": 0, \"b\": 255 }", "\"keyColor\": null", "keyColor")]

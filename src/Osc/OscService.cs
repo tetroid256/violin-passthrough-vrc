@@ -148,6 +148,8 @@ public sealed class OscService : IOscEndpoint
             _oscQuery.AddEndpoint<bool>(OscBindings.ParameterPrefix + settings.DebugParameter, Attributes.AccessValues.WriteOnly, null, "Passthrough debug display");
             _oscQuery.AddEndpoint<bool>(OscBindings.ParameterPrefix + settings.AutoParameter, Attributes.AccessValues.WriteOnly, null, "Passthrough auto mode");
             _oscQuery.AddEndpoint<bool>(OscBindings.ParameterPrefix + settings.CalibrateParameter, Attributes.AccessValues.WriteOnly, null, "Passthrough calibration");
+            _oscQuery.AddEndpoint<int>(OscBindings.ParameterPrefix + settings.AutoMethodParameter, Attributes.AccessValues.WriteOnly, null, "Passthrough auto method");
+            _oscQuery.AddEndpoint<int>(OscBindings.ParameterPrefix + settings.ViolinParameter, Attributes.AccessValues.WriteOnly, null, "Violin model mode");
 
             _oscQuery.StartHttpServer();
             // 広告する前に、HTTP サーバーが応答するかを確かめる（使えないサービスを広告しないため）。

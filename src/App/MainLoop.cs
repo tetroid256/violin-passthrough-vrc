@@ -62,6 +62,10 @@ public sealed class MainLoop : IDisposable
     private readonly HashSet<string> _missingForAuto = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _missingForCalibration = new(StringComparer.OrdinalIgnoreCase);
 
+    private ViolinState _loggedViolinState = ViolinState.Away;
+    private AutoMethod _postureMethod;
+    private bool _headWarned;
+
     // 1フレームの中で、トラッキング情報は必要になったときに1回だけ取る。
     private TrackingSnapshot? _frameTracking;
 
@@ -85,6 +89,7 @@ public sealed class MainLoop : IDisposable
         _beeper = beeper;
         _posture = new PostureDetector(_time);
         _calibration = new CalibrationSession(_time);
+        _postureMethod = state.AutoMethod;
         _config = configSource.Current;
         // 起動時から設定が壊れていた（既定の設定で動いている）ときも、最初のフレームで知らせる。
         _seenInvalidCount = 0;
@@ -100,7 +105,12 @@ public sealed class MainLoop : IDisposable
 
     /// <summary>起動時の状態を設定から作る。</summary>
     public static PassthroughState CreateInitialState(ResolvedConfig config) =>
-        new(config.StartEnabled, config.ActivePreset, config.DebugVisible, config.Auto.Enabled);
+        new(
+            config.StartEnabled,
+            config.ActivePreset,
+            config.DebugVisible,
+            config.Auto.Enabled,
+            AutoMethods.FromFlags(config.Auto.UseLeftHand, config.Auto.UseHeadTilt));
 
     /// <summary>SteamVR から終了を求められるか、キャンセルされるまで回る。</summary>
     /// <returns>SteamVR から終了を求められたら true。</returns>
@@ -165,8 +175,10 @@ public sealed class MainLoop : IDisposable
 
         EnsureOsc();
         ReceiveOsc();
+        WarnIfHeadNotCalibrated();
         UpdateCalibration();
         UpdatePosture();
+        LogViolinState();
         UpdatePreview();
 
         if (_overlaysDirty || _state.Version != _appliedStateVersion)
@@ -187,12 +199,45 @@ public sealed class MainLoop : IDisposable
 
     public void Dispose()
     {
+        ResetAvatarOnExit();
         _osc?.Dispose();
         _osc = null;
         _status.Dispose();
     }
 
     private TrackingSnapshot Tracking => _frameTracking ??= _lifecycle.GetTrackingSnapshot();
+
+    /// <summary>
+    /// 終了するときに、アプリがいないと戻せない値を VRChat で 0 に戻す。バイオリンのモデルの状態は同期していて
+    /// 他のプレイヤーにも見えるので、出したまま（構えたまま）にしない。キャリブレーションのトグルも OFF にする。
+    /// 異常終了したときは送れない。
+    /// </summary>
+    private void ResetAvatarOnExit()
+    {
+        if (_osc is null || _bindings is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_state.ViolinMode != ViolinMode.Away || _vrchat.ViolinState != (int)ViolinState.Away || _vrchat.Violin != (int)ViolinMode.Away)
+            {
+                _osc.Send(new OscMessage(_bindings.ViolinStateAddress, (int)ViolinState.Away));
+                _osc.Send(new OscMessage(_bindings.ViolinAddress, (int)ViolinMode.Away));
+                Log.Info("Violin model put away on exit.");
+            }
+
+            if (_calibration.Active || _vrchat.Calibrate == true)
+            {
+                _osc.Send(new OscMessage(_bindings.CalibrateAddress, false));
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Could not reset the avatar parameters on exit: " + ex.Message);
+        }
+    }
 
     private void ApplyConfig(ResolvedConfig next)
     {
@@ -215,6 +260,13 @@ public sealed class MainLoop : IDisposable
         if (next.Auto.Enabled != previous.Auto.Enabled && _state.SetAuto(next.Auto.Enabled))
         {
             Log.Info($"Auto mode {(next.Auto.Enabled ? "on" : "off")} (config).");
+        }
+
+        var nextMethod = AutoMethods.FromFlags(next.Auto.UseLeftHand, next.Auto.UseHeadTilt);
+        if (nextMethod != AutoMethods.FromFlags(previous.Auto.UseLeftHand, previous.Auto.UseHeadTilt)
+            && _state.SetAutoMethod(nextMethod))
+        {
+            Log.Info($"Auto method changed to {nextMethod} (config).");
         }
 
         // キャリブレーションの結果を書き込んだときは、結果の通知を上書きしない。
@@ -282,7 +334,7 @@ public sealed class MainLoop : IDisposable
                 continue;
             }
 
-            var before = (_state.Enabled, _state.Auto, _state.ActivePreset);
+            var before = (_state.Enabled, _state.Auto, _state.ActivePreset, _state.AutoMethod, _state.ViolinMode);
             switch (_bindings.Apply(message, _state, _config, ref _vrchat))
             {
                 case OscApplyResult.CalibrationRequested:
@@ -299,9 +351,26 @@ public sealed class MainLoop : IDisposable
     }
 
     /// <summary>OSC で変わった状態を通知表示で知らせる（窓の見た目で分からないものだけ）。</summary>
-    private void ShowStateToast((bool Enabled, bool Auto, string Preset) before)
+    private void ShowStateToast((bool Enabled, bool Auto, string Preset, AutoMethod Method, ViolinMode Violin) before)
     {
-        if (_state.Auto != before.Auto)
+        if (_state.AutoMethod != before.Method)
+        {
+            if (_state.AutoMethod.UsesHead() && _config.Auto.HeadUp is null)
+            {
+                // 頭の傾きの基準はキャリブレーションで記録する。それまでは左手で判定する。
+                _status.Show("CALIBRATE FOR HEAD", StatusKind.Error, ResultDuration);
+                _headWarned = true;
+            }
+            else
+            {
+                _status.Show("AUTO: " + _state.AutoMethod.Label(), StatusKind.Info, ToastDuration);
+            }
+        }
+        else if (_state.ViolinMode != before.Violin)
+        {
+            _status.Show("VIOLIN: " + _state.ViolinMode.ToString().ToUpperInvariant(), StatusKind.Info, ToastDuration);
+        }
+        else if (_state.Auto != before.Auto)
         {
             _status.Show(_state.Auto ? "AUTO ON" : "AUTO OFF", StatusKind.Info, ToastDuration);
         }
@@ -406,7 +475,7 @@ public sealed class MainLoop : IDisposable
         }
 
         // 自動モードが位置で判定するときだけ、auto.deviceSerial のデバイスを必須にする（頭の傾きだけなら、無くても窓は合わせられる）。
-        var input = _sampler.TryGetInput(requirePosture: _config.Auto.UseLeftHand, out var error);
+        var input = _sampler.TryGetInput(requirePosture: _state.AutoMethod.UsesLeftHand(), out var error);
         _sampler.Clear();
         if (input is null)
         {
@@ -450,16 +519,27 @@ public sealed class MainLoop : IDisposable
 
     private void UpdatePosture()
     {
-        // 自動モードで有効なときだけ判定する（毎フレームのトラッキング情報の取得を減らすため）。
-        if (!_state.Auto || !_state.Enabled)
+        // 自動モードで有効なとき、またはバイオリンを持っているときだけ判定する（毎フレームのトラッキング情報の取得を減らすため）。
+        if (!_state.NeedsPostureDetection)
         {
             _posture.Reset();
             _state.SetInPosture(false);
             return;
         }
 
+        // 構える前に判定方法を変えたら、前の方法で数えていた待ち時間は使わない。
+        if (_state.AutoMethod != _postureMethod)
+        {
+            _postureMethod = _state.AutoMethod;
+            if (!_state.InPosture)
+            {
+                _posture.Reset();
+            }
+        }
+
+        var settings = EffectiveAutoSettings();
         var tracking = Tracking;
-        if (_config.Auto.UseLeftHand)
+        if (settings.UseLeftHand)
         {
             if (_config.Auto.DeviceSerial is { } serial)
             {
@@ -471,10 +551,56 @@ public sealed class MainLoop : IDisposable
             }
         }
 
-        var inPosture = _posture.Update(_config.Auto, tracking, _config.Hands);
+        var inPosture = _posture.Update(settings, tracking, _config.Hands);
         if (_state.SetInPosture(inPosture))
         {
             Log.Info(inPosture ? "Playing posture detected." : "Playing posture ended.");
+        }
+    }
+
+    /// <summary>
+    /// 今の判定方法（OSC でも切り替える）での自動モードの設定。頭の傾きの基準がまだ無い（キャリブレーション前）ときは、
+    /// 左手で判定する（頭の傾きだけでは判定できないため）。
+    /// </summary>
+    private AutoSettings EffectiveAutoSettings()
+    {
+        var method = _state.AutoMethod;
+        var head = method.UsesHead() && _config.Auto.HeadUp is not null;
+        var hand = method.UsesLeftHand() || !head;
+        var auto = _config.Auto;
+        return auto.UseLeftHand == hand && auto.UseHeadTilt == head ? auto : auto with { UseLeftHand = hand, UseHeadTilt = head };
+    }
+
+    /// <summary>
+    /// 頭の傾きを使う判定方法なのに基準（<c>auto.headUp</c>）が無ければ、判定が要るときに一度だけ知らせる
+    /// （起動時や設定の再読み込みでそうなったときも。OSC で切り替えたときは <see cref="ShowStateToast"/> が出す）。
+    /// </summary>
+    private void WarnIfHeadNotCalibrated()
+    {
+        if (!_state.AutoMethod.UsesHead() || _config.Auto.HeadUp is not null)
+        {
+            _headWarned = false;
+            return;
+        }
+
+        if (_headWarned || !_state.NeedsPostureDetection)
+        {
+            return;
+        }
+
+        _headWarned = true;
+        Log.Warn($"Auto method {_state.AutoMethod} uses the head tilt, but auto.headUp is not recorded yet; using the left hand until you calibrate.");
+        _status.Show("CALIBRATE FOR HEAD", StatusKind.Error, ResultDuration);
+    }
+
+    /// <summary>バイオリンのモデルの状態が変わったらログに出す（アバターへは <see cref="SendStateToVrchat"/> で送る）。</summary>
+    private void LogViolinState()
+    {
+        var violin = _state.ViolinState;
+        if (violin != _loggedViolinState)
+        {
+            Log.Info($"Violin model: {_loggedViolinState} -> {violin}.");
+            _loggedViolinState = violin;
         }
     }
 

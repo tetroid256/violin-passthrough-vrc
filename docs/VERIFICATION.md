@@ -129,7 +129,7 @@ OSCQuery がうまく動かないとき（フォールバック）:
 - [ ] Unity の Console にコンパイルエラーが出ない。
 - [ ] `Tools/Violin Passthrough/Add OSC Menu to Avatar` で画面が開き、選んでいたアバターが入っている。
 - [ ] 実行すると、アバターの直下に GameObject ができ、MA Parameters / MA Menu Installer / MA Menu Item が付いている。Ctrl+Z で元に戻せる。もう一度実行すると、増えずに置き換わる。
-- [ ] Play モードに入る（または NDMF の Manual Bake）と、Expression Parameters に 5 つのパラメータが **Synced なし** で入り、メニューに「Violin Passthrough」のサブメニューができる。
+- [ ] Play モードに入る（または NDMF の Manual Bake）と、Expression Parameters にパラメータが入り、メニューに「Violin Passthrough」のサブメニューができる（Phase 7 の版は 5 つ、すべて **Synced なし**。Phase 8 の版は 8 つで、`HandPassthroughViolinState` だけ **Synced あり**。画面の Violin を外すと 6 つ）。
 - [ ] アップロードして VRChat でメニューを開き、Passthrough / Auto / Calibrate / Debug / Preset が本アプリを操作できる（Phase 3・Phase 6 の確認と同じ）。本アプリが状態を送り返すので、トグルの表示が本アプリの状態と合う。
 - [ ] 手で設定していたパラメータがあるアバターでは、手で入れたものを消してから試す（同じ名前が二重になったときの動きも、分かれば教えてください）。
 
@@ -144,3 +144,24 @@ OSCQuery がうまく動かないとき（フォールバック）:
 - [ ] 手首にトラッカーを付けて `tracking.leftHandSerial` を設定すると、キャリブレーションと自動モードがトラッカーの位置で動く。
 - [ ] シリアル番号を打ち間違えると、視界に `NO LEFT TRACKER`（または `NO AUTO TRACKER`）と出て、ログに接続中のシリアル番号の一覧が出る。
 - [ ] 窓をトラッカー基準（`"anchor": { "type": "device", "serial": "..." }`）にしてキャリブレーションすると、その瞬間は HMD 基準と同じ場所に出て、楽器を動かすと窓が楽器についてくる。
+
+## Phase 8: 判定方法の切り替えとバイオリンのモデル
+
+準備: エディタ拡張でメニューを作り直す（**Add / Update**）か、手で `HandPassthroughAutoMethod`（Int）・`HandPassthroughViolin`（Int）・`HandPassthroughViolinState`（Int、**Synced をオン**）を追加してアップロードし、VRChat の OSC の **Reset Config** を実行する（docs/AVATAR_SETUP.md）。
+
+### 判定方法
+- [ ] キャリブレーションを一度してから、自動モードをオンにする。
+- [ ] **Auto Method > Hand + Head** にすると `AUTO: HAND+HEAD` と出る。左手を隠したまま（または弦を押さえてハンドトラッキングが外れた状態で）構えても窓が出る。
+- [ ] **Head** にすると、手の位置に関係なく、顎当てに顎を乗せて頭を傾けたときだけ窓が出る。首を少し傾けただけで出てしまうときは、`auto.headTiltToleranceDeg`（既定 15°）を小さくして結果を教えてください。
+- [ ] **Left Hand** に戻すと、今までどおり左手で判定する。
+- [ ] 設定ファイルの `auto.headUp` を消してから Head を選ぶと `CALIBRATE FOR HEAD` と出る。
+
+### バイオリンのモデルの状態（アニメーターが無くても確かめられる）
+- [ ] `--console` で起動しておき、**Violin > Hold** にすると `VIOLIN: HOLD` と出て、ログに `Violin model: Away -> Held.` と出る。
+- [ ] 構えるとログに `Held -> Playing.`、下ろして約 2 秒で `Playing -> Held.` と出る（自動モードがオフでも）。
+- [ ] **Play** にすると、下ろしていても `Playing` のまま。自動モードがオンなら窓も出る。
+- [ ] **Away** にすると `Away` に戻る。
+- [ ] Hold か Play のまま本アプリを終了する（SteamVR を終了して本アプリも終わらせるか、`--console` で起動して Ctrl+C。窓の × で閉じたときは送れない場合がある）と、ログに `Violin model put away on exit.` と出て、メニューの Violin が Away に戻る。
+- [ ] （確かめられれば）VRChat のパラメータのデバッグ表示や、別のアカウント・友人の画面で、`HandPassthroughViolinState` が 0 / 1 / 2 に変わる（同期しているか）。
+- [ ] 判定が出たり消えたりして状態がばたつくときは、どの判定方法で起きたかを教えてください（他のプレイヤーにはモデルが行ったり来たりして見えるため）。
+

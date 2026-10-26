@@ -69,4 +69,22 @@ public class Phase7ConfigTests
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains("tracking must be an object", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void HeadTiltWithoutHeadUp_IsAccepted()
+    {
+        // 頭の傾きの基準はキャリブレーションで記録する。それまでは左手で判定する（DESIGN.md §17.1）。
+        var config = TestConfigs.Parse(TestConfigs.DefaultWith("\"useHeadTilt\": false", "\"useHeadTilt\": true"));
+
+        Assert.True(config.Auto.UseHeadTilt);
+        Assert.Null(config.Auto.HeadUp);
+    }
+
+    [Fact]
+    public void NullLeftHandPosition_FallsBackToTheDefault()
+    {
+        var config = TestConfigs.Parse(TestConfigs.DefaultWith("\"leftHandPosition\": [-0.35, -0.10, -0.35]", "\"leftHandPosition\": null"));
+
+        Assert.Equal(new Vec3(-0.35, -0.10, -0.35), config.Auto.LeftHandPosition);
+    }
 }

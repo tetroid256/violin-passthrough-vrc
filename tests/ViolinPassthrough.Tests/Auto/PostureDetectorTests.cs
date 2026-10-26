@@ -229,4 +229,13 @@ public class PostureDetectorTests
         Assert.True(PostureDetector.Evaluate(settings, tracking, false, hands));
         Assert.Equal(4u, PostureDetector.PostureDeviceIndex(settings, tracking, hands));
     }
+
+    [Fact]
+    public void NoUsableCondition_CannotDecide()
+    {
+        // 頭の傾きだけで、基準が無い（キャリブレーション前）。手が構えた位置にあっても判定しない。
+        var settings = Settings(leftHand: false, headTilt: true, headUp: null);
+
+        Assert.Null(PostureDetector.Evaluate(settings, Tracking.Make(Hmd, Reference, null), false));
+    }
 }

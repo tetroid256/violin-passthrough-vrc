@@ -60,9 +60,7 @@ public sealed class Phase6ConfigTests : IDisposable
     }
 
     [Theory]
-    [InlineData("\"useHeadTilt\": false", "\"useHeadTilt\": true", "headUp")]
     [InlineData("\"useLeftHand\": true,\n    \"useHeadTilt\": false", "\"useLeftHand\": false,\n    \"useHeadTilt\": false", "at least one")]
-    [InlineData("\"leftHandPosition\": [-0.35, -0.10, -0.35]", "\"leftHandPosition\": null", "leftHandPosition")]
     [InlineData("\"radiusMeters\": 0.15", "\"radiusMeters\": 0", "auto.radiusMeters")]
     [InlineData("\"headTiltToleranceDeg\": 15", "\"headTiltToleranceDeg\": 120", "auto.headTiltToleranceDeg")]
     [InlineData("\"exitDelaySeconds\": 2.0", "\"exitDelaySeconds\": -1", "auto.exitDelaySeconds")]
@@ -71,7 +69,7 @@ public sealed class Phase6ConfigTests : IDisposable
     [InlineData("\"regionId\": \"fingerboard\"", "\"regionId\": \"\"", "calibration.regionId")]
     [InlineData("\"textHeightMeters\": 0.015", "\"textHeightMeters\": 1", "feedback.textHeightMeters")]
     [InlineData("\"position\": [0, 0.08, -0.5]", "\"position\": [0, 0.08]", "feedback: position")]
-    [InlineData("\"calibrate\": \"HandPassthroughCalibrate\"", "\"calibrate\": \"HandPassthroughAuto\"", "different names")]
+    [InlineData("\"calibrate\": \"HandPassthroughCalibrate\"", "\"calibrate\": \"HandPassthroughAuto\"", "different name")]
     public void InvalidValues_AreRejected(string oldText, string newText, string expected)
     {
         var result = ConfigValidator.Parse(TestConfigs.DefaultWith(oldText, newText));
