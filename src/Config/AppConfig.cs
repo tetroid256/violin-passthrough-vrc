@@ -44,6 +44,9 @@ public sealed class AppConfig
     /// <summary>VR 内の通知表示（DESIGN.md §15.4）。</summary>
     public FeedbackConfig Feedback { get; set; } = new();
 
+    /// <summary>自動モードとキャリブレーションで「手」として使うデバイス（DESIGN.md §16.2）。</summary>
+    public TrackingConfig Tracking { get; set; } = new();
+
     /// <summary>"Debug" / "Info" / "Warning" / "Error"。</summary>
     public string LogLevel { get; set; } = "Info";
 }
@@ -143,6 +146,9 @@ public sealed class AutoConfig
 
     public bool UseHeadTilt { get; set; }
 
+    /// <summary>左手の代わりに、このデバイス（楽器に付けたトラッカーなど）の位置で判定する。null なら左手。</summary>
+    public string? DeviceSerial { get; set; }
+
     /// <summary>HMD から見た、構えたときの左手の位置（キャリブレーションで書き込む）。</summary>
     public double[]? LeftHandPosition { get; set; } = { -0.35, -0.10, -0.35 };
 
@@ -184,6 +190,15 @@ public sealed class FeedbackConfig
 
     /// <summary>文字の高さ（メートル）。</summary>
     public double TextHeightMeters { get; set; } = 0.015;
+}
+
+public sealed class TrackingConfig
+{
+    /// <summary>左手の代わりに使うデバイス（手首や楽器に付けたトラッカー）のシリアル番号。null なら左手。</summary>
+    public string? LeftHandSerial { get; set; }
+
+    /// <summary>右手の代わりに使うデバイスのシリアル番号。null なら右手。</summary>
+    public string? RightHandSerial { get; set; }
 }
 
 /// <summary>

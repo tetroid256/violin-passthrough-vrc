@@ -26,7 +26,7 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 
 1. ビルドしたフォルダを、ずっと置いておく場所に置く（例: `C:\Tools\ViolinPassthrough`）。
 2. SteamVR を起動した状態で `ViolinPassthrough.exe` を一度起動する。SteamVR に登録され、次回から SteamVR と一緒に自動で起動・終了する。
-3. VRChat のアバターメニュー（OSC）でオン/オフする。設定は `%APPDATA%\ViolinPassthrough\config.json`。
+3. VRChat のアバターメニュー（OSC）でオン/オフする。設定は `%APPDATA%\ViolinPassthrough\config.json`。アバターへのメニューの追加は、Modular Avatar を使うとエディタ拡張でまとめてできる（[docs/AVATAR_SETUP.md](docs/AVATAR_SETUP.md)）。
 
 | オプション | 意味 |
 |---|---|
@@ -90,7 +90,7 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 ### キャリブレーション（構えて窓を合わせる）
 1. アバターメニューの **HandPassthroughCalibrate** を ON にする。ビープ音と視界の文字（`CALIBRATE 5` … `1`）でカウントダウンが始まる。
 2. その間に演奏の姿勢をとる: **左手は 1st ポジション、右手は弓の元（フロッグ）を駒の近くの弦に置く**。
-3. 0 になった瞬間の両手の位置から、`calibration.regionId`（既定 `fingerboard`）の窓の位置・角度・長さを計算して config.json に書き込む。窓は「目から見て」両手を覆うように置く（近い弓の手も、遠い左手も窓に入る）。直前の内容は `config.json.bak`、最初の内容（コメント入りの手書きのもの）は `config.json.orig` に残る。書き込んだ config.json からは JSON のコメントが消える。設定ファイルにエラーがあるときは書き込まない（`CAL FAIL: FIX CONFIG FIRST`）。
+3. 最後の 1 秒の両手の位置の平均から（その間に一瞬でも見えていればよい）、`calibration.regionId`（既定 `fingerboard`）の窓の位置・角度・長さを計算して config.json に書き込む。窓は「目から見て」両手を覆うように置く（近い弓の手も、遠い左手も窓に入る）。直前の内容は `config.json.bak`、最初の内容（コメント入りの手書きのもの）は `config.json.orig` に残る。書き込んだ config.json からは JSON のコメントが消える。設定ファイルにエラーがあるときは書き込まない（`CAL FAIL: FIX CONFIG FIRST`）。
 4. `CALIBRATED` と出て、5 秒間、新しい窓が赤いデバッグ表示で見える。失敗したら `CAL FAIL: ...` と理由が出て、設定は変わらない。
 5. カウントダウン中にメニューを OFF にすると取り消す。
 
@@ -113,13 +113,24 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 | `auto.headUp` | なし | 構えたときの頭の傾き。キャリブレーションで書き込む |
 | `auto.radiusMeters` / `auto.headTiltToleranceDeg` | 0.15 / 15 | 構えているとみなす範囲 |
 | `auto.enterDelaySeconds` / `auto.exitDelaySeconds` | 0.3 / 2.0 | 表示する・隠すまでの待ち時間 |
-| `calibration.regionId` | fingerboard | 置き直す領域（HMD 基準のもの） |
+| `auto.deviceSerial` | null | 左手の代わりに判定に使うデバイス（楽器に付けたトラッカー）のシリアル番号 |
+| `calibration.regionId` | fingerboard | 置き直す領域（HMD 基準かデバイス基準のもの） |
 | `calibration.countdownSeconds` | 5 | カウントダウンの秒数 |
 | `calibration.padMeters` | 0.05 | 両手の外側に足す長さ（片側） |
 | `calibration.previewSeconds` | 5 | 結果を赤く見せる時間 |
 | `calibration.beep` | true | ビープ音（PC の既定の音声出力。VD 経由でヘッドセットに聞こえる） |
 | `feedback.toasts` | true | 結果以外の通知も出すか |
 | `feedback.position` / `feedback.textHeightMeters` | [0, 0.08, -0.5] / 0.015 | 通知の位置（HMD 基準）と文字の高さ |
+| `tracking.leftHandSerial` / `tracking.rightHandSerial` | null / null | 自動モードとキャリブレーションで、手の代わりに使うデバイス（手首に付けたトラッカー）のシリアル番号 |
+
+## 左手のトラッキングが外れるとき（Phase 7）
+
+指板を押さえる左手は、ハンドトラッキングが外れやすい。対策は [docs/TRACKING.md](docs/TRACKING.md) にまとめた。要点:
+- キャリブレーションは最後の 1 秒の平均を使うので、一瞬外れても失敗しない（設定不要）。
+- 機材なしなら、自動モードを頭の傾きで判定する（`"auto": { "useLeftHand": false, "useHeadTilt": true }`）。
+- 楽器に SteamVR のトラッカーを付けたら `auto.deviceSerial` に、手首に付けたら `tracking.leftHandSerial` にシリアル番号を書く（番号は `--console` のログの `Tracked devices:` に出る）。窓を楽器のトラッカーに追従させて（`"anchor": { "type": "device", "serial": "..." }`）キャリブレーションすることもできる。
+- 見つからないときは視界に `NO LEFT TRACKER` / `NO AUTO TRACKER` と出る。
+- VRChat のアバターの手が飛ぶ問題は、本アプリでは直せない（docs/TRACKING.md の 4）。
 
 ## OSC（VRChat のアバターメニューで切り替え）
 
@@ -135,7 +146,7 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 起動時・OSC 設定の変更時・アバター変更時、それと設定ファイルで状態が変わったときに、現在の状態を VRChat（既定 127.0.0.1:9000）に送ってメニューの表示を合わせる。
 Bool のパラメータを Int / Float で作ってしまっても受け取れる（Int は 0 以外、Float は 0.5 以上を true とみなす）。
 
-アバター側の設定は DESIGN.md §9 と §15.5 を参照（5つのパラメータを **Synced を外して** Expression Parameters に追加し、メニューに Toggle を置く。アニメーターの変更は不要）。
+アバター側の設定は [docs/AVATAR_SETUP.md](docs/AVATAR_SETUP.md) を参照。Modular Avatar を使うなら、`unity/com.tetroid256.violin-passthrough/` のエディタ拡張でパラメータとメニューをまとめて追加できる。手で設定する場合は、5つのパラメータを **Synced を外して** Expression Parameters に追加し、メニューに Toggle を置く（DESIGN.md §9 と §15.5。アニメーターの変更は不要）。
 
 ## 依存ライブラリ
 
@@ -165,7 +176,10 @@ src/
 tests/                    単体テスト（xUnit）
 resources/                manifest.vrmanifest と config.default.json
 third_party/openvr/       OpenVR の公式バインディング
+unity/                    Unity のエディタ拡張（Modular Avatar でアバターにメニューを追加する）
 docs/VERIFICATION.md      実機での確認手順
+docs/AVATAR_SETUP.md      アバターへのメニューの追加（Modular Avatar / 手作業）
+docs/TRACKING.md          左手のトラッキングが外れるときの対策
 ```
 
 OpenVR の API を呼ぶのは `AppLifecycle` と `MaskOverlay` だけ（DESIGN.md §4, §14）。それ以外はテストで偽物に差し替えて確認している。

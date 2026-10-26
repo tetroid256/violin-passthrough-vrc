@@ -150,18 +150,18 @@ public class MainLoopPhase6Tests
     }
 
     [Fact]
-    public void Calibration_OfANonHmdRegion_Fails()
+    public void Calibration_OfAWorldRegion_Fails()
     {
         var t = With(
             "\"anchor\": { \"type\": \"hmd\" },\n      \"shape\": { \"type\": \"ellipse\" }",
-            "\"anchor\": { \"type\": \"device\", \"role\": \"leftHand\" },\n      \"shape\": { \"type\": \"ellipse\" }");
+            "\"anchor\": { \"type\": \"world\" },\n      \"shape\": { \"type\": \"ellipse\" }");
         t._loop.Tick();
         t.Receive(Calibrate, true);
 
         t.Run(TimeSpan.FromSeconds(5.05));
 
         Assert.Empty(t._config.Calibrations);
-        Assert.Equal("CAL FAIL: NOT HMD REGION", t._status.CurrentText);
+        Assert.Equal("CAL FAIL: WORLD REGION", t._status.CurrentText);
     }
 
     [Fact]

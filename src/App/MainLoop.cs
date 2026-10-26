@@ -36,6 +36,7 @@ public sealed class MainLoop : IDisposable
     private readonly IBeeper? _beeper;
     private readonly PostureDetector _posture;
     private readonly CalibrationSession _calibration;
+    private readonly CalibrationSampler _sampler = new();
     private ResolvedConfig _config;
     private int _appliedStateVersion = -1;
     private bool _overlaysDirty = true;
@@ -53,6 +54,9 @@ public sealed class MainLoop : IDisposable
 
     // キャリブレーションの書き込みによる再読み込みでは「CONFIG RELOADED」を出さない。
     private long? _suppressReloadToastUntil;
+
+    // 見つからないと知らせた、手の代わりのデバイスのシリアル番号（見つかるまで繰り返さない）。
+    private readonly HashSet<string> _missingSerials = new(StringComparer.Ordinal);
 
     // 1フレームの中で、トラッキング情報は必要になったときに1回だけ取る。
     private TrackingSnapshot? _frameTracking;
@@ -321,6 +325,7 @@ public sealed class MainLoop : IDisposable
 
         Log.Info($"Calibration started ({_config.Calibration.CountdownSeconds} s countdown).");
         _calibration.Start(_config.Calibration.CountdownSeconds);
+        _sampler.Clear();
     }
 
     private void CancelCalibration()
@@ -331,6 +336,7 @@ public sealed class MainLoop : IDisposable
         }
 
         _calibration.Cancel();
+        _sampler.Clear();
         Log.Info("Calibration cancelled.");
         _status.Show("CAL CANCELLED", StatusKind.Error, ResultDuration, isToast: false);
         Beep(BeepKind.Error);
@@ -338,6 +344,17 @@ public sealed class MainLoop : IDisposable
 
     private void UpdateCalibration()
     {
+        // 最後の 1 秒は毎フレーム手の位置を集める（撮るフレームの分も含む）。
+        if (_calibration.Active && _calibration.Remaining <= CalibrationSampler.Window)
+        {
+            var anchor = _config.Regions.FirstOrDefault(r => r.Id == _config.Calibration.RegionId)?.Anchor as DeviceAnchorSpec;
+            var tracking = Tracking;
+            CheckSerial(tracking, _config.Hands.LeftHandSerial, "tracking.leftHandSerial", "NO LEFT TRACKER");
+            CheckSerial(tracking, _config.Hands.RightHandSerial, "tracking.rightHandSerial", "NO RIGHT TRACKER");
+            CheckSerial(tracking, _config.Auto.DeviceSerial, "auto.deviceSerial", "NO AUTO TRACKER");
+            _sampler.Add(tracking, _config.Hands, anchor, _config.Auto.DeviceSerial);
+        }
+
         var step = _calibration.Update();
         switch (step.Kind)
         {
@@ -358,36 +375,30 @@ public sealed class MainLoop : IDisposable
         var region = _config.Regions.FirstOrDefault(r => r.Id == settings.RegionId);
         if (region is null)
         {
+            _sampler.Clear();
             FailCalibration("REGION NOT FOUND", $"region \"{settings.RegionId}\" is not defined");
             return;
         }
 
-        if (region.Anchor is not HmdAnchorSpec)
+        if (region.Anchor is WorldAnchorSpec)
         {
-            FailCalibration("NOT HMD REGION", $"region \"{settings.RegionId}\" is not hmd-anchored");
+            // 部屋に固定した窓は、手の位置ではなく設定ファイルで置く。
+            _sampler.Clear();
+            FailCalibration("WORLD REGION", $"region \"{settings.RegionId}\" is world-anchored (only hmd and device regions can be calibrated)");
             return;
         }
 
-        var tracking = Tracking;
-        if (ValidPose(tracking, HmdAnchor.HmdDeviceIndex) is not { } hmd)
+        var samples = FormattableString.Invariant(
+            $"frames in the last {CalibrationSampler.Window.TotalSeconds:0.#} s: hmd {_sampler.HmdSamples}, left {_sampler.LeftSamples}, right {_sampler.RightSamples}");
+        var input = _sampler.TryGetInput(_config.Hands, region.Anchor is DeviceAnchorSpec, out var error, _config.Auto.DeviceSerial);
+        _sampler.Clear();
+        if (input is null)
         {
-            FailCalibration("NO HMD", "the HMD pose is not valid");
+            FailCalibration(error, $"{error.ToLowerInvariant()} ({samples})");
             return;
         }
 
-        if (ValidPose(tracking, tracking.LeftHandIndex) is not { } left)
-        {
-            FailCalibration("NO LEFT HAND", "the left hand is not tracked");
-            return;
-        }
-
-        if (ValidPose(tracking, tracking.RightHandIndex) is not { } right)
-        {
-            FailCalibration("NO RIGHT HAND", "the right hand is not tracked");
-            return;
-        }
-
-        var result = Calibrator.Compute(hmd, left, right, region, settings.PadMeters, out var error);
+        var result = Calibrator.Compute(input, region, settings.PadMeters, out error);
         if (result is null)
         {
             FailCalibration(error, error.ToLowerInvariant());
@@ -400,7 +411,7 @@ public sealed class MainLoop : IDisposable
             return;
         }
 
-        Log.Info($"Calibrated \"{result.RegionId}\": position {Format(result.Position)}, rotation {Format(result.RotationEulerDeg)}, width {result.WidthMeters:0.000} m.");
+        Log.Info($"Calibrated \"{result.RegionId}\" ({AnchorName(region.Anchor)}): position {Format(result.Position)}, rotation {Format(result.RotationEulerDeg)}, width {result.WidthMeters:0.000} m ({samples}).");
         _status.Show("CALIBRATED", StatusKind.Success, ResultDuration, isToast: false);
         _suppressReloadToastUntil = _time.GetTimestamp() + (long)(ResultDuration.TotalSeconds * _time.TimestampFrequency);
         Beep(BeepKind.Success);
@@ -431,7 +442,20 @@ public sealed class MainLoop : IDisposable
             return;
         }
 
-        var inPosture = _posture.Update(_config.Auto, Tracking);
+        var tracking = Tracking;
+        if (_config.Auto.UseLeftHand)
+        {
+            if (_config.Auto.DeviceSerial is { } serial)
+            {
+                CheckSerial(tracking, serial, "auto.deviceSerial", "NO AUTO TRACKER");
+            }
+            else
+            {
+                CheckSerial(tracking, _config.Hands.LeftHandSerial, "tracking.leftHandSerial", "NO LEFT TRACKER");
+            }
+        }
+
+        var inPosture = _posture.Update(_config.Auto, tracking, _config.Hands);
         if (_state.SetInPosture(inPosture))
         {
             Log.Info(inPosture ? "Playing posture detected." : "Playing posture ended.");
@@ -507,11 +531,40 @@ public sealed class MainLoop : IDisposable
         }
     }
 
-    private static Pose3x4? ValidPose(TrackingSnapshot tracking, uint index) =>
-        index != TrackingSnapshot.InvalidDeviceIndex
-        && tracking.TryGetPose(index) is { IsConnected: true, IsPoseValid: true } pose
-            ? pose.DeviceToAbsolute
-            : null;
+    /// <summary>
+    /// 手の代わりに指定したデバイスが無ければ、ログと通知表示で一度だけ知らせる（見つかったらログで知らせ、また無くなったら知らせる）。
+    /// </summary>
+    private void CheckSerial(TrackingSnapshot tracking, string? serial, string setting, string message)
+    {
+        if (serial is null)
+        {
+            return;
+        }
+
+        if (tracking.SerialToIndex.ContainsKey(serial))
+        {
+            if (_missingSerials.Remove(serial))
+            {
+                Log.Info($"Device with serial \"{serial}\" ({setting}) found.");
+            }
+
+            return;
+        }
+
+        if (_missingSerials.Add(serial))
+        {
+            // 打ち間違いに気づけるように、接続中のデバイスも出す。
+            Log.Warn($"No connected device has serial \"{serial}\" ({setting}). Connected: {string.Join(", ", tracking.SerialToIndex.Keys)}.");
+            _status.Show(message, StatusKind.Error, ResultDuration);
+        }
+    }
+
+    private static string AnchorName(AnchorSpec anchor) => anchor switch
+    {
+        DeviceAnchorSpec { Serial: { } serial } => $"device \"{serial}\"",
+        DeviceAnchorSpec device => $"device {device.Role}",
+        _ => "hmd",
+    };
 
     private static string Format(Vec3 v) =>
         FormattableString.Invariant($"[{v.X:0.000}, {v.Y:0.000}, {v.Z:0.000}]");

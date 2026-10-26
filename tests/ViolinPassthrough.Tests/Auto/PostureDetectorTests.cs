@@ -193,4 +193,40 @@ public class PostureDetectorTests
 
         Assert.False(detector.InPosture);
     }
+
+    [Fact]
+    public void TrackerSerial_IsUsedInsteadOfTheLeftHand()
+    {
+        var hands = new HandDevices("LHR-WRIST", null);
+        // 手は構えた位置から外れて（または見失って）いても、トラッカーが構えた位置にあれば構えている。
+        var raised = Tracking.WithTracker(Tracking.Make(Hmd, new Vec3(-0.2, -0.6, -0.1), null), "LHR-WRIST", Tracking.AtLocal(Hmd, Reference));
+        var lowered = Tracking.WithTracker(Tracking.Make(Hmd, Reference, null), "LHR-WRIST", Tracking.AtLocal(Hmd, new Vec3(-0.2, -0.6, -0.1)));
+
+        Assert.True(PostureDetector.Evaluate(Settings(), raised, false, hands));
+        Assert.False(PostureDetector.Evaluate(Settings(), lowered, false, hands));
+    }
+
+    [Fact]
+    public void MissingTracker_CountsAsLost()
+    {
+        var hands = new HandDevices("LHR-WRIST", null);
+        var tracking = Tracking.Make(Hmd, Reference, null);
+
+        Assert.Null(PostureDetector.Evaluate(Settings(), tracking, false, hands));
+    }
+
+    [Fact]
+    public void DeviceSerial_TakesPriorityOverTheHands()
+    {
+        // 楽器に付けたトラッカーで判定する。手首のトラッカーの設定より優先する。
+        var settings = Settings() with { DeviceSerial = "VIOLIN" };
+        var hands = new HandDevices("LHR-WRIST", null);
+        var tracking = Tracking.WithTracker(
+            Tracking.WithTracker(Tracking.Make(Hmd, null, null), "LHR-WRIST", Tracking.AtLocal(Hmd, new Vec3(-0.2, -0.6, -0.1))),
+            "VIOLIN",
+            Tracking.AtLocal(Hmd, Reference));
+
+        Assert.True(PostureDetector.Evaluate(settings, tracking, false, hands));
+        Assert.Equal(4u, PostureDetector.PostureDeviceIndex(settings, tracking, hands));
+    }
 }
