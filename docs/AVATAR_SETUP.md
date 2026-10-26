@@ -30,7 +30,7 @@
 ### 準備
 
 1. VCC（VRChat Creator Companion）か ALCOM で、アバターのプロジェクトに Modular Avatar（1.11.0 以降、2.0 未満）を追加する。
-2. このリポジトリの `unity/com.tetroid256.violin-passthrough/` フォルダ（GitHub の Code > Download ZIP で取得できる）を、Unity プロジェクトの `Packages/` フォルダにフォルダごとコピーする。
+2. このリポジトリの `unity/com.tetroid256.violin-passthrough/` フォルダ（GitHub の Code > Download ZIP か、Actions の Artifact `ViolinPassthrough-unity-package` で取得できる）を、Unity プロジェクトの `Packages/` フォルダにフォルダごとコピーする。
    - Unity の Window > Package Manager > ＋ > Add package from disk... で、このフォルダの `package.json` を選んでもよい。この場合は、フォルダを移動・削除しないこと。
 3. Unity に戻ると読み込まれ、メニューに **Tools > Violin Passthrough** が出る。出ないときは、Modular Avatar と VRChat SDK - Avatars が入っているか、Console にエラーが出ていないかを確認する。
 

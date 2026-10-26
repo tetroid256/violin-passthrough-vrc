@@ -441,7 +441,7 @@ Phase 1〜2 を実機で確かめた後の、ユーザーの要望から追加�
 ### 16.1 Modular Avatar 対応
 - 困りごと: §9・§15.5 のパラメータ（5 個）とメニューを、アバターごとに手で設定するのは手間で、間違えやすい（Synced を外し忘れる、名前を打ち間違える）。
 - [Modular Avatar](https://github.com/bdunderscore/modular-avatar)（MA）は、アバターに置いたコンポーネントから、アップロード時にパラメータとメニューを組み込む（元のアバターの Expression Parameters / Menu を書き換えない）。
-- 本リポジトリの `unity/com.tetroid256.violin-passthrough/` に、Unity のエディタ拡張（VPM / UPM 形式のパッケージ）を置く。メニュー `Tools/Violin Passthrough/Add OSC Menu to Avatar` で、選んだアバターの直下に次を持つ GameObject を作る（Undo できる）。
+- 本リポジトリの `unity/com.tetroid256.violin-passthrough/` に、Unity のエディタ拡張（VPM / UPM 形式のパッケージ。MA 1.11.0 以降 2.0 未満。メニューの表示名に使う `label` が 1.11.0 で入ったため）を置く。MA や VRChat SDK が無い・MA 2.0 以降のプロジェクトでは、asmdef の条件でコンパイルされず、ツールが出ないだけになる。メニュー `Tools/Violin Passthrough/Add OSC Menu to Avatar` で、選んだアバターの直下に次を持つ GameObject を作る（Undo できる）。
   - `MA Parameters`: 5 つのパラメータ（Bool / Int、**ローカルのみ（Synced しない）**、保存しない、既定 0）。同期ビットを消費しない。
   - `MA Menu Installer` と `MA Menu Item`（サブメニュー）。中に Toggle（Passthrough / Auto / Calibrate / Debug）と、プリセットのサブメニュー（番号ごとの Toggle）。
 - パラメータ名とプリセットはツールの画面で変えられる（config.json の `osc.parameters` と `presets` の順番に合わせる）。

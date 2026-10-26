@@ -10,6 +10,7 @@ Quest 3 + Virtual Desktop + SteamVR + VRChat で、バイオリンの手元だ�
 
 push するたびに `windows-latest` でテストとビルドが走り、`ViolinPassthrough-win-x64` という Artifact ができる（保持期間 14 日）。
 Actions タブ → 該当の実行 → Artifacts からダウンロードして展開する。self-contained なので .NET のインストールは不要。
+同じ実行の `ViolinPassthrough-unity-package` は、アバターにメニューを追加する Unity のエディタ拡張（[docs/AVATAR_SETUP.md](docs/AVATAR_SETUP.md)）。
 
 ### ローカル（Windows）
 
