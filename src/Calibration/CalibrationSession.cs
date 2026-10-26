@@ -33,6 +33,12 @@ public sealed class CalibrationSession
     /// <summary>カウントダウン中か。</summary>
     public bool Active => _startedAt is not null;
 
+    /// <summary>撮るまでの残り時間（カウントダウン中でなければ 0）。</summary>
+    public TimeSpan Remaining =>
+        _startedAt is { } startedAt
+            ? TimeSpan.FromSeconds(Math.Max(0, _seconds - _time.GetElapsedTime(startedAt).TotalSeconds))
+            : TimeSpan.Zero;
+
     public void Start(int seconds)
     {
         _startedAt = _time.GetTimestamp();

@@ -84,6 +84,7 @@ public static partial class ConfigValidator
         var auto = ValidateAuto(raw.Auto, errors);
         var calibration = ValidateCalibration(raw.Calibration, errors);
         var feedback = ValidateFeedback(raw.Feedback, errors);
+        var hands = ValidateTracking(raw.Tracking, errors);
         var logLevel = ParseLogLevel(raw.LogLevel, errors);
 
         if (errors.Count > 0)
@@ -103,6 +104,7 @@ public static partial class ConfigValidator
             auto!,
             calibration!,
             feedback!,
+            hands!,
             logLevel);
         return new ConfigParseResult(config, Array.Empty<string>());
     }
@@ -567,6 +569,12 @@ public static partial class ConfigValidator
             errors.Add("auto: useHeadTilt needs auto.headUp (run the calibration once to record it).");
         }
 
+        var deviceSerial = auto.DeviceSerial?.Trim();
+        if (deviceSerial is not null && deviceSerial.Length == 0)
+        {
+            errors.Add("auto.deviceSerial must not be empty (use null to use the left hand).");
+        }
+
         if (!auto.UseLeftHand && !auto.UseHeadTilt)
         {
             errors.Add("auto: enable at least one of useLeftHand or useHeadTilt.");
@@ -587,7 +595,8 @@ public static partial class ConfigValidator
                 auto.RadiusMeters,
                 auto.HeadTiltToleranceDeg,
                 auto.EnterDelaySeconds,
-                auto.ExitDelaySeconds)
+                auto.ExitDelaySeconds,
+                deviceSerial)
             : null;
     }
 
@@ -600,7 +609,7 @@ public static partial class ConfigValidator
         }
 
         var before = errors.Count;
-        // 領域があるか・HMD 基準かは、キャリブレーションを実行するときに確かめる
+        // 領域があるか・キャリブレーションできるアンカー（HMD かデバイス）かは、キャリブレーションを実行するときに確かめる
         // （キャリブレーションを使わない人の設定をエラーにしないため）。
         if (string.IsNullOrWhiteSpace(calibration.RegionId))
         {
@@ -637,6 +646,37 @@ public static partial class ConfigValidator
         var position = ValidateVector(feedback.Position, "position", "feedback", required: true, errors);
         ValidateBetween(feedback.TextHeightMeters, "feedback.textHeightMeters", 0.005, 0.2, errors);
         return errors.Count == before ? new FeedbackSettings(feedback.Toasts, position, feedback.TextHeightMeters) : null;
+    }
+
+    private static HandDevices? ValidateTracking(TrackingConfig? tracking, List<string> errors)
+    {
+        if (tracking is null)
+        {
+            errors.Add("tracking must be an object (or omitted).");
+            return null;
+        }
+
+        var before = errors.Count;
+        string? Serial(string? value, string name)
+        {
+            var serial = value?.Trim();
+            if (serial is not null && serial.Length == 0)
+            {
+                errors.Add($"tracking.{name} must not be empty (use null to use the hand).");
+            }
+
+            return serial;
+        }
+
+        var left = Serial(tracking.LeftHandSerial, "leftHandSerial");
+        var right = Serial(tracking.RightHandSerial, "rightHandSerial");
+        // シリアル番号は大文字・小文字を区別せずに探すので、比べるときも区別しない。
+        if (left is not null && string.Equals(left, right, StringComparison.OrdinalIgnoreCase))
+        {
+            errors.Add("tracking.leftHandSerial and tracking.rightHandSerial must be different devices.");
+        }
+
+        return errors.Count == before ? new HandDevices(left, right) : null;
     }
 
     private static void ValidateBetween(double value, string name, double min, double max, List<string> errors)

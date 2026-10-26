@@ -1,0 +1,3 @@
+# ルートの .gitignore は Visual Studio 向けに *.meta を除外しているが、
+# Unity パッケージでは .meta（GUID）が必須なのでここでは含める。
+!*.meta

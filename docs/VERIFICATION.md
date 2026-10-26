@@ -118,3 +118,29 @@ OSCQuery がうまく動かないとき（フォールバック）:
 - [ ] Preset を切り替えると `PRESET WHOLE` などと出る。
 - [ ] config.json を保存すると `CONFIG RELOADED`、壊して保存すると `CONFIG ERROR`（理由はログに出る） と出る。
 - [ ] 通知の文字が読める大きさで、演奏の邪魔にならない位置にある（`feedback.position` / `textHeightMeters` で調整できる）。
+
+## Phase 7: アバターへの組み込みと左手のトラッキング対策
+
+### Modular Avatar のエディタ拡張（Unity）
+このパッケージは Unity を動かせない環境で書いたので、**まだ一度も Unity で動かしていません**。エラーや見た目の問題があれば、Console のメッセージごと教えてください。
+
+準備: VCC で Modular Avatar を入れたアバターのプロジェクトに、`unity/com.tetroid256.violin-passthrough` フォルダを `Packages/` の下にコピーする（docs/AVATAR_SETUP.md）。
+
+- [ ] Unity の Console にコンパイルエラーが出ない。
+- [ ] `Tools/Violin Passthrough/Add OSC Menu to Avatar` で画面が開き、選んでいたアバターが入っている。
+- [ ] 実行すると、アバターの直下に GameObject ができ、MA Parameters / MA Menu Installer / MA Menu Item が付いている。Ctrl+Z で元に戻せる。もう一度実行すると、増えずに置き換わる。
+- [ ] Play モードに入る（または NDMF の Manual Bake）と、Expression Parameters に 5 つのパラメータが **Synced なし** で入り、メニューに「Violin Passthrough」のサブメニューができる。
+- [ ] アップロードして VRChat でメニューを開き、Passthrough / Auto / Calibrate / Debug / Preset が本アプリを操作できる（Phase 3・Phase 6 の確認と同じ）。本アプリが状態を送り返すので、トグルの表示が本アプリの状態と合う。
+- [ ] 手で設定していたパラメータがあるアバターでは、手で入れたものを消してから試す（同じ名前が二重になったときの動きも、分かれば教えてください）。
+
+### キャリブレーションの平均
+- [ ] カウントダウンの最後に、左手を一瞬だけ弦から離して（ハンドトラッキングが外れるように）待っても `CALIBRATED` になる。
+- [ ] 最後の 1 秒ずっと片手を隠すと `CAL FAIL: NO LEFT HAND` になる。ログに `frames in the last 1 s: hmd 30, left 0, right 30` のような数が出る。
+- [ ] 何度か繰り返したときの窓の位置のばらつきが、Phase 6 のときより小さい（体感でよい）。
+
+### トラッカー（持っている場合）
+- [ ] `--console` のログの `Tracked devices:` にトラッカーのシリアル番号が出る。
+- [ ] 楽器にトラッカーを付けて `auto.deviceSerial` を設定し、キャリブレーションしてから自動モードにすると、左手のハンドトラッキングが外れていても、構えたら窓が出て、下ろしたら消える。
+- [ ] 手首にトラッカーを付けて `tracking.leftHandSerial` を設定すると、キャリブレーションと自動モードがトラッカーの位置で動く。
+- [ ] シリアル番号を打ち間違えると、視界に `NO LEFT TRACKER`（または `NO AUTO TRACKER`）と出て、ログに接続中のシリアル番号の一覧が出る。
+- [ ] 窓をトラッカー基準（`"anchor": { "type": "device", "serial": "..." }`）にしてキャリブレーションすると、その瞬間は HMD 基準と同じ場所に出て、楽器を動かすと窓が楽器についてくる。

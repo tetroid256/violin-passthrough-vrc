@@ -45,6 +45,7 @@ public sealed record ResolvedConfig(
     AutoSettings Auto,
     CalibrationSettings Calibration,
     FeedbackSettings Feedback,
+    HandDevices Hands,
     LogLevel LogLevel)
 {
     public PresetDefinition? FindPreset(string name) => Presets.FirstOrDefault(p => p.Name == name);

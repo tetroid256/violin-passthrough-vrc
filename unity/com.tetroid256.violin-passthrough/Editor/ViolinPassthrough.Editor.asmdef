@@ -1,0 +1,36 @@
+{
+  "name": "ViolinPassthrough.Editor",
+  "rootNamespace": "ViolinPassthrough.Editor",
+  "references": [
+    "nadena.dev.modular-avatar.core",
+    "nadena.dev.ndmf.runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "VRCSDK3A.dll",
+    "VRCSDKBase.dll"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "VIOLIN_PASSTHROUGH_MA",
+    "VIOLIN_PASSTHROUGH_VRCSDK3A"
+  ],
+  "versionDefines": [
+    {
+      "name": "nadena.dev.modular-avatar",
+      "expression": "[1.11.0,2.0.0-alpha)",
+      "define": "VIOLIN_PASSTHROUGH_MA"
+    },
+    {
+      "name": "com.vrchat.avatars",
+      "expression": "",
+      "define": "VIOLIN_PASSTHROUGH_VRCSDK3A"
+    }
+  ],
+  "noEngineReferences": false
+}

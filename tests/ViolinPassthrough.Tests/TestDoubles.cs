@@ -242,6 +242,20 @@ internal static class Tracking
         return new TrackingSnapshot(TrackingUniverse.Standing, poses, Left, Right, new Dictionary<string, uint>());
     }
 
+    /// <summary>トラッカー（シリアル番号付き）を次のインデックスに足す。姿勢が null なら見失っている。</summary>
+    public static TrackingSnapshot WithTracker(TrackingSnapshot tracking, string serial, Pose3x4? pose)
+    {
+        var poses = tracking.Poses.ToList();
+        var index = (uint)poses.Count;
+        poses.Add(pose is { } p ? new DevicePose(true, true, p) : new DevicePose(true, false, Pose3x4.Identity));
+        var serials = new Dictionary<string, uint>(tracking.SerialToIndex) { [serial] = index };
+        return new TrackingSnapshot(tracking.Universe, poses, tracking.LeftHandIndex, tracking.RightHandIndex, serials);
+    }
+
+    /// <summary>HMD から見た位置にあるデバイスの姿勢（向きは HMD と同じ）。</summary>
+    public static Pose3x4 AtLocal(Pose3x4 hmd, Vec3 local) =>
+        hmd * (Pose3x4.Identity with { M03 = local.X, M13 = local.Y, M23 = local.Z });
+
     /// <summary>立って正面を向いた HMD（床から 1.6 m）。</summary>
     public static Pose3x4 StandingHmd(double yawDeg = 0, double rollDeg = 0) =>
         Pose3x4.FromPositionEuler(new Vec3(0.2, 1.6, -0.1), new Vec3(0, yawDeg, rollDeg));

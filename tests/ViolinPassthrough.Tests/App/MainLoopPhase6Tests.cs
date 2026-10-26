@@ -84,7 +84,7 @@ public class MainLoopPhase6Tests
         Assert.False(_loop.Calibrating);
         var result = Assert.Single(_config.Calibrations);
         Assert.Equal("fingerboard", result.RegionId);
-        Assert.Equal(LeftLocal.X, result.LeftHandPosition.X, 9);
+        Assert.Equal(LeftLocal.X, result.LeftHandPosition!.Value.X, 9);
         Assert.Equal("CALIBRATED", _status.CurrentText);
         Assert.Equal(5, _beeper.Beeps.Count(b => b == BeepKind.Tick));
         Assert.Equal(BeepKind.Success, _beeper.Beeps[^1]);
@@ -150,18 +150,18 @@ public class MainLoopPhase6Tests
     }
 
     [Fact]
-    public void Calibration_OfANonHmdRegion_Fails()
+    public void Calibration_OfAWorldRegion_Fails()
     {
         var t = With(
             "\"anchor\": { \"type\": \"hmd\" },\n      \"shape\": { \"type\": \"ellipse\" }",
-            "\"anchor\": { \"type\": \"device\", \"role\": \"leftHand\" },\n      \"shape\": { \"type\": \"ellipse\" }");
+            "\"anchor\": { \"type\": \"world\" },\n      \"shape\": { \"type\": \"ellipse\" }");
         t._loop.Tick();
         t.Receive(Calibrate, true);
 
         t.Run(TimeSpan.FromSeconds(5.05));
 
         Assert.Empty(t._config.Calibrations);
-        Assert.Equal("CAL FAIL: NOT HMD REGION", t._status.CurrentText);
+        Assert.Equal("CAL FAIL: WORLD REGION", t._status.CurrentText);
     }
 
     [Fact]

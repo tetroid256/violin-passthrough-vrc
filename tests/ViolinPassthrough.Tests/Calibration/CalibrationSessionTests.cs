@@ -62,4 +62,19 @@ public class CalibrationSessionTests
 
         Assert.Equal(new CalibrationStep(CalibrationStepKind.Tick, 5), session.Update());
     }
+
+    [Fact]
+    public void Remaining_CountsDownToZero()
+    {
+        var time = new ManualTimeProvider();
+        var session = new CalibrationSession(time);
+        Assert.Equal(TimeSpan.Zero, session.Remaining);
+
+        session.Start(3);
+        time.Advance(TimeSpan.FromSeconds(2.25));
+        Assert.Equal(0.75, session.Remaining.TotalSeconds, 6);
+
+        time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(TimeSpan.Zero, session.Remaining);
+    }
 }

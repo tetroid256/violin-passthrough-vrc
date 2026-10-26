@@ -1,0 +1,21 @@
+{
+  "name": "com.tetroid256.violin-passthrough",
+  "displayName": "Violin Passthrough (Modular Avatar menu)",
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "Editor tool that adds the Violin Passthrough OSC menu (local-only, unsaved avatar parameters and toggles) to a VRChat avatar non-destructively with Modular Avatar components. Open it from Tools > Violin Passthrough > Add OSC Menu to Avatar.",
+  "author": {
+    "name": "tetroid256",
+    "url": "https://github.com/tetroid256/violin-passthrough-vrc"
+  },
+  "documentationUrl": "https://github.com/tetroid256/violin-passthrough-vrc/blob/main/docs/AVATAR_SETUP.md",
+  "keywords": [
+    "vrchat",
+    "modular-avatar",
+    "osc"
+  ],
+  "vpmDependencies": {
+    "com.vrchat.avatars": ">=3.7.4",
+    "nadena.dev.modular-avatar": ">=1.11.0 <2.0.0-a"
+  }
+}
