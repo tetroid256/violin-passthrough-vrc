@@ -161,7 +161,7 @@ OSCQuery がうまく動かないとき（フォールバック）:
 - [ ] 構えるとログに `Held -> Playing.`、下ろして約 2 秒で `Playing -> Held.` と出る（自動モードがオフでも）。
 - [ ] **Play** にすると、下ろしていても `Playing` のまま。自動モードがオンなら窓も出る。
 - [ ] **Away** にすると `Away` に戻る。
-- [ ] Hold か Play のまま本アプリを終了する（トレイが無いので、`--console` の窓を閉じるか Ctrl+C）と、ログに `Violin model put away on exit.` と出て、メニューの Violin が Away に戻る。
+- [ ] Hold か Play のまま本アプリを終了する（SteamVR を終了して本アプリも終わらせるか、`--console` で起動して Ctrl+C。窓の × で閉じたときは送れない場合がある）と、ログに `Violin model put away on exit.` と出て、メニューの Violin が Away に戻る。
 - [ ] （確かめられれば）VRChat のパラメータのデバッグ表示や、別のアカウント・友人の画面で、`HandPassthroughViolinState` が 0 / 1 / 2 に変わる（同期しているか）。
 - [ ] 判定が出たり消えたりして状態がばたつくときは、どの判定方法で起きたかを教えてください（他のプレイヤーにはモデルが行ったり来たりして見えるため）。
 
