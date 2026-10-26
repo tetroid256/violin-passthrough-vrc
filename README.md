@@ -90,7 +90,7 @@ dotnet publish src/ViolinPassthrough.csproj -c Release -r win-x64 --self-contain
 ### キャリブレーション（構えて窓を合わせる）
 1. アバターメニューの **HandPassthroughCalibrate** を ON にする。ビープ音と視界の文字（`CALIBRATE 5` … `1`）でカウントダウンが始まる。
 2. その間に演奏の姿勢をとる: **左手は 1st ポジション、右手は弓の元（フロッグ）を駒の近くの弦に置く**。
-3. 最後の 1 秒の両手の位置の平均から（その間に一瞬でも見えていればよい）、`calibration.regionId`（既定 `fingerboard`）の窓の位置・角度・長さを計算して config.json に書き込む。窓は「目から見て」両手を覆うように置く（近い弓の手も、遠い左手も窓に入る）。直前の内容は `config.json.bak`、最初の内容（コメント入りの手書きのもの）は `config.json.orig` に残る。書き込んだ config.json からは JSON のコメントが消える。設定ファイルにエラーがあるときは書き込まない（`CAL FAIL: FIX CONFIG FIRST`）。
+3. 最後の 1 秒の両手の位置の平均から（その間に一瞬でも見えていればよい。カウントダウンが 1 秒なら最後の 0.5 秒）、`calibration.regionId`（既定 `fingerboard`）の窓の位置・角度・長さを計算して config.json に書き込む。窓は「目から見て」両手を覆うように置く（近い弓の手も、遠い左手も窓に入る）。直前の内容は `config.json.bak`、最初の内容（コメント入りの手書きのもの）は `config.json.orig` に残る。書き込んだ config.json からは JSON のコメントが消える。設定ファイルにエラーがあるときは書き込まない（`CAL FAIL: FIX CONFIG FIRST`）。
 4. `CALIBRATED` と出て、5 秒間、新しい窓が赤いデバッグ表示で見える。失敗したら `CAL FAIL: ...` と理由が出て、設定は変わらない。
 5. カウントダウン中にメニューを OFF にすると取り消す。
 

@@ -84,7 +84,7 @@ public class MainLoopPhase6Tests
         Assert.False(_loop.Calibrating);
         var result = Assert.Single(_config.Calibrations);
         Assert.Equal("fingerboard", result.RegionId);
-        Assert.Equal(LeftLocal.X, result.LeftHandPosition.X, 9);
+        Assert.Equal(LeftLocal.X, result.LeftHandPosition!.Value.X, 9);
         Assert.Equal("CALIBRATED", _status.CurrentText);
         Assert.Equal(5, _beeper.Beeps.Count(b => b == BeepKind.Tick));
         Assert.Equal(BeepKind.Success, _beeper.Beeps[^1]);

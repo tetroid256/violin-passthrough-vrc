@@ -4,11 +4,11 @@ namespace ViolinPassthrough.Auto;
 
 /// <summary>自動モード（構えたときだけ表示）の設定（検証済み）。</summary>
 /// <param name="Enabled">起動時に自動モードにするか（設定の値。変わったときに状態へ反映する）。</param>
-/// <param name="UseLeftHand">左手の位置で判定する。</param>
+/// <param name="UseLeftHand">左手（または <see cref="DeviceSerial"/> のデバイス）の位置で判定する。</param>
 /// <param name="UseHeadTilt">頭の傾きで判定する。</param>
 /// <param name="LeftHandPosition">HMD から見た、構えたときの左手（または <see cref="DeviceSerial"/> のデバイス）の位置。</param>
 /// <param name="HeadUp">HMD から見た、構えたときの「上」の向き。<see cref="UseHeadTilt"/> のときは必須。</param>
-/// <param name="RadiusMeters">左手がこの距離以内なら構えている。</param>
+/// <param name="RadiusMeters">左手（または <see cref="DeviceSerial"/> のデバイス）がこの距離以内なら構えている。</param>
 /// <param name="HeadTiltToleranceDeg">「上」の向きがこの角度以内なら構えている。</param>
 /// <param name="EnterDelaySeconds">構えた状態がこの時間続いたら表示する。</param>
 /// <param name="ExitDelaySeconds">外れた状態がこの時間続いたら隠す。</param>

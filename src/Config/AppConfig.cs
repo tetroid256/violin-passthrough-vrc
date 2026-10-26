@@ -149,7 +149,7 @@ public sealed class AutoConfig
     /// <summary>左手の代わりに、このデバイス（楽器に付けたトラッカーなど）の位置で判定する。null なら左手。</summary>
     public string? DeviceSerial { get; set; }
 
-    /// <summary>HMD から見た、構えたときの左手の位置（キャリブレーションで書き込む）。</summary>
+    /// <summary>HMD から見た、構えたときの左手（または <see cref="DeviceSerial"/> のデバイス）の位置（キャリブレーションで書き込む）。</summary>
     public double[]? LeftHandPosition { get; set; } = { -0.35, -0.10, -0.35 };
 
     /// <summary>HMD から見た、構えたときの「上」の向き（キャリブレーションで書き込む）。</summary>
@@ -194,7 +194,10 @@ public sealed class FeedbackConfig
 
 public sealed class TrackingConfig
 {
-    /// <summary>左手の代わりに使うデバイス（手首や楽器に付けたトラッカー）のシリアル番号。null なら左手。</summary>
+    /// <summary>
+    /// 左手の代わりに使うデバイス（手首に付けたトラッカー）のシリアル番号。null なら左手。
+    /// キャリブレーションでは窓の端になるので、楽器に付けたトラッカーは <see cref="AutoConfig.DeviceSerial"/> に書く。
+    /// </summary>
     public string? LeftHandSerial { get; set; }
 
     /// <summary>右手の代わりに使うデバイスのシリアル番号。null なら右手。</summary>

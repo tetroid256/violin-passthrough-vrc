@@ -354,7 +354,11 @@ public sealed class ConfigStore : IConfigSource, IDisposable
             root["auto"] = auto;
         }
 
-        auto["leftHandPosition"] = Vector(result.LeftHandPosition, 3);
+        if (result.LeftHandPosition is { } leftHand)
+        {
+            auto["leftHandPosition"] = Vector(leftHand, 3);
+        }
+
         auto["headUp"] = Vector(result.HeadUp, 3);
 
         var builder = new System.Text.StringBuilder();

@@ -609,7 +609,7 @@ public static partial class ConfigValidator
         }
 
         var before = errors.Count;
-        // 領域があるか・HMD 基準かは、キャリブレーションを実行するときに確かめる
+        // 領域があるか・キャリブレーションできるアンカー（HMD かデバイス）かは、キャリブレーションを実行するときに確かめる
         // （キャリブレーションを使わない人の設定をエラーにしないため）。
         if (string.IsNullOrWhiteSpace(calibration.RegionId))
         {
@@ -670,7 +670,8 @@ public static partial class ConfigValidator
 
         var left = Serial(tracking.LeftHandSerial, "leftHandSerial");
         var right = Serial(tracking.RightHandSerial, "rightHandSerial");
-        if (left is not null && left == right)
+        // シリアル番号は大文字・小文字を区別せずに探すので、比べるときも区別しない。
+        if (left is not null && string.Equals(left, right, StringComparison.OrdinalIgnoreCase))
         {
             errors.Add("tracking.leftHandSerial and tracking.rightHandSerial must be different devices.");
         }

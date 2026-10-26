@@ -104,7 +104,7 @@ public class CalibratorTests
         AssertVec(a.Position, b.Position, 9);
         AssertVec(a.RotationEulerDeg, b.RotationEulerDeg, 6);
         Assert.Equal(a.WidthMeters, b.WidthMeters, 9);
-        AssertVec(LeftLocal, b.LeftHandPosition, 9);
+        AssertVec(LeftLocal, b.LeftHandPosition!.Value, 9);
     }
 
     [Fact]
@@ -179,7 +179,7 @@ public class CalibratorTests
         var hmdResult = Compute(Tracking.StandingHmd(), LeftLocal, RightLocal);
         var anchorInHmd = Pose3x4.FromPositionEuler(new Vec3(-0.2, -0.15, -0.3), new Vec3(30, -40, 70));
         var region = Region with { Anchor = new DeviceAnchorSpec(null, "VIOLIN", LostBehavior.Hold) };
-        var input = new CalibrationInput(LeftLocal, RightLocal, new Vec3(0, 1, 0), anchorInHmd);
+        var input = new CalibrationInput(LeftLocal, RightLocal, new Vec3(0, 1, 0), anchorInHmd, LeftLocal);
 
         var result = Calibrator.Compute(input, region, 0.05, out var error);
 
@@ -191,7 +191,7 @@ public class CalibratorTests
         AssertVec(expected.TransformDirection(new Vec3(0, 0, 1)), placed.TransformDirection(new Vec3(0, 0, 1)), 6);
         Assert.Equal(hmdResult.WidthMeters, result.WidthMeters, 9);
         // 自動モードの基準は、領域のアンカーに関係なく HMD から見た位置。
-        AssertVec(LeftLocal, result.LeftHandPosition, 9);
+        AssertVec(LeftLocal, result.LeftHandPosition!.Value, 9);
     }
 
     [Fact]
@@ -199,7 +199,7 @@ public class CalibratorTests
     {
         var region = Region with { Anchor = new DeviceAnchorSpec(DeviceRole.LeftHand, null, LostBehavior.Hold) };
 
-        Assert.Null(Calibrator.Compute(new CalibrationInput(LeftLocal, RightLocal, new Vec3(0, 1, 0), null), region, 0.05, out var error));
+        Assert.Null(Calibrator.Compute(new CalibrationInput(LeftLocal, RightLocal, new Vec3(0, 1, 0), null, LeftLocal), region, 0.05, out var error));
         Assert.Equal("NO ANCHOR DEVICE", error);
     }
 
@@ -208,7 +208,7 @@ public class CalibratorTests
     {
         var region = Region with { Anchor = new WorldAnchorSpec(TrackingUniverse.Standing) };
 
-        Assert.Null(Calibrator.Compute(new CalibrationInput(LeftLocal, RightLocal, new Vec3(0, 1, 0), Pose3x4.Identity), region, 0.05, out var error));
+        Assert.Null(Calibrator.Compute(new CalibrationInput(LeftLocal, RightLocal, new Vec3(0, 1, 0), Pose3x4.Identity, LeftLocal), region, 0.05, out var error));
         Assert.Equal("WORLD REGION", error);
     }
 
@@ -216,7 +216,7 @@ public class CalibratorTests
     public void HmdRegion_IgnoresAnAnchorPose()
     {
         var hmdResult = Compute(Tracking.StandingHmd(), LeftLocal, RightLocal);
-        var input = new CalibrationInput(LeftLocal, RightLocal, new Vec3(0, 1, 0), Pose3x4.FromPositionEuler(new Vec3(1, 2, 3), new Vec3(10, 20, 30)));
+        var input = new CalibrationInput(LeftLocal, RightLocal, new Vec3(0, 1, 0), Pose3x4.FromPositionEuler(new Vec3(1, 2, 3), new Vec3(10, 20, 30)), LeftLocal);
 
         var result = Calibrator.Compute(input, Region, 0.05, out _)!;
 

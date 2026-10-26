@@ -8,14 +8,14 @@ namespace ViolinPassthrough.Calibration;
 /// <param name="Position">板の中心（領域のアンカーの座標）。</param>
 /// <param name="RotationEulerDeg">板の回転（pitch, yaw, roll。領域のアンカーの座標）。</param>
 /// <param name="WidthMeters">板の幅（余白を足す前）。</param>
-/// <param name="LeftHandPosition">HMD から見た、自動モードで判定に使うデバイス（既定は左手）の位置（自動モードの基準）。</param>
+/// <param name="LeftHandPosition">HMD から見た、自動モードで判定に使うデバイス（既定は左手）の位置（自動モードの基準）。null なら書き換えない。</param>
 /// <param name="HeadUp">HMD から見た「上」の向き（自動モードの基準）。</param>
 public sealed record CalibrationResult(
     string RegionId,
     Vec3 Position,
     Vec3 RotationEulerDeg,
     double WidthMeters,
-    Vec3 LeftHandPosition,
+    Vec3? LeftHandPosition,
     Vec3 HeadUp);
 
 /// <summary>キャリブレーションの入力（すべて HMD 座標）。</summary>
@@ -23,8 +23,8 @@ public sealed record CalibrationResult(
 /// <param name="RightHand">右手（または右手の代わりのデバイス）の位置。</param>
 /// <param name="HeadUp">世界の「上」の向き。</param>
 /// <param name="AnchorInHmd">デバイス基準の領域のとき、そのデバイスの姿勢。</param>
-/// <param name="PostureDevice">自動モードで左手の代わりに使うデバイスの位置。null なら左手の位置を記録する。</param>
-public sealed record CalibrationInput(Vec3 LeftHand, Vec3 RightHand, Vec3 HeadUp, Pose3x4? AnchorInHmd, Vec3? PostureDevice = null);
+/// <param name="AutoReference">自動モードの基準として記録する位置（左手か <c>auto.deviceSerial</c> のデバイス）。null なら記録しない。</param>
+public sealed record CalibrationInput(Vec3 LeftHand, Vec3 RightHand, Vec3 HeadUp, Pose3x4? AnchorInHmd, Vec3? AutoReference);
 
 /// <summary>
 /// 両手の位置から、領域の板を置き直す（DESIGN.md §15.2）。
@@ -44,7 +44,7 @@ public static class Calibrator
     public const double MinDistanceFromEyeMeters = 0.1;
 
     /// <summary>
-    /// 計算する。姿勢はすべて同じトラッキング空間（standing など）のもの。HMD 基準の領域だけに使える。
+    /// 計算する。姿勢はすべて同じトラッキング空間（standing など）のもの。HMD 基準の領域だけに使える（主にテスト用）。
     /// </summary>
     /// <param name="error">失敗したときの理由（通知表示に出す短い英大文字）。</param>
     public static CalibrationResult? Compute(
@@ -56,11 +56,13 @@ public static class Calibrator
         out string error)
     {
         var toHmd = hmd.Inverse();
+        var left = toHmd.TransformPoint(leftHand.Translation);
         var input = new CalibrationInput(
-            toHmd.TransformPoint(leftHand.Translation),
+            left,
             toHmd.TransformPoint(rightHand.Translation),
             toHmd.TransformDirection(new Vec3(0, 1, 0)),
-            AnchorInHmd: null);
+            AnchorInHmd: null,
+            AutoReference: left);
         return Compute(input, region, padMeters, out error);
     }
 
@@ -132,6 +134,6 @@ public static class Calibrator
         var width = Math.Min(across.Length + 2 * padMeters, Config.ConfigValidator.MaxSizeMeters);
 
         error = string.Empty;
-        return new CalibrationResult(region.Id, pose.Translation, pose.ToEulerDeg(), width, input.PostureDevice ?? left, input.HeadUp.Normalized());
+        return new CalibrationResult(region.Id, pose.Translation, pose.ToEulerDeg(), width, input.AutoReference, input.HeadUp.Normalized());
     }
 }

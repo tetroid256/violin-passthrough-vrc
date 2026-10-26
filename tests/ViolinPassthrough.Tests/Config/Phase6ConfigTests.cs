@@ -121,6 +121,17 @@ public sealed class Phase6ConfigTests : IDisposable
     }
 
     [Fact]
+    public void UpdateCalibrationJson_WithoutAnAutoReference_KeepsLeftHandPosition()
+    {
+        // auto.deviceSerial のデバイスが見えず、自動モードが頭の傾きだけのとき（DESIGN.md §16.2）。
+        var json = ConfigStore.UpdateCalibrationJson(TestConfigs.DefaultJson, Result with { LeftHandPosition = null }, out _);
+
+        var config = TestConfigs.Parse(json!);
+        Assert.Equal(TestConfigs.Default.Auto.LeftHandPosition, config.Auto.LeftHandPosition);
+        Assert.NotNull(config.Auto.HeadUp);
+    }
+
+    [Fact]
     public void UpdateCalibrationJson_AddsAutoSectionAndAcceptsCommentsAndOtherCasing()
     {
         const string text = """

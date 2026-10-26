@@ -32,6 +32,7 @@ public class Phase7ConfigTests
     [Theory]
     [InlineData("\"leftHandSerial\": \"  \",\n    \"rightHandSerial\": null", "tracking.leftHandSerial must not be empty")]
     [InlineData("\"leftHandSerial\": \"LHR-1\",\n    \"rightHandSerial\": \"LHR-1\"", "must be different devices")]
+    [InlineData("\"leftHandSerial\": \"lhr-1\",\n    \"rightHandSerial\": \"LHR-1\"", "must be different devices")]
     [InlineData("\"leftHandSerial\": null,\n    \"rightHandSerial\": null,\n    \"unknown\": 1", "unknown")]
     public void InvalidValues_AreRejected(string tracking, string expected)
     {
@@ -58,5 +59,14 @@ public class Phase7ConfigTests
 
         Assert.False(result.Success);
         Assert.Contains(result.Errors, e => e.Contains("auto.deviceSerial must not be empty", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void NullSection_IsRejected()
+    {
+        var result = ConfigValidator.Parse(TestConfigs.DefaultWith("\"tracking\": {\n    " + DefaultTracking + "\n  }", "\"tracking\": null"));
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, e => e.Contains("tracking must be an object", StringComparison.Ordinal));
     }
 }

@@ -37,6 +37,7 @@ public sealed class MainLoop : IDisposable
     private readonly PostureDetector _posture;
     private readonly CalibrationSession _calibration;
     private readonly CalibrationSampler _sampler = new();
+    private TimeSpan _sampleWindow = CalibrationSampler.Window;
     private ResolvedConfig _config;
     private int _appliedStateVersion = -1;
     private bool _overlaysDirty = true;
@@ -55,8 +56,11 @@ public sealed class MainLoop : IDisposable
     // キャリブレーションの書き込みによる再読み込みでは「CONFIG RELOADED」を出さない。
     private long? _suppressReloadToastUntil;
 
-    // 見つからないと知らせた、手の代わりのデバイスのシリアル番号（見つかるまで繰り返さない）。
-    private readonly HashSet<string> _missingSerials = new(StringComparer.Ordinal);
+    // 見つからないと知らせた、手や左手の代わりのデバイス（"設定項目=シリアル番号"。見つかるまで繰り返さない）。
+    // 自動モード（通知表示も出す）とキャリブレーション（ログだけ。結果の CAL FAIL で知らせる）で分ける。
+    // シリアル番号は大文字・小文字を区別せずに探す（AppLifecycle の一覧と同じ）。
+    private readonly HashSet<string> _missingForAuto = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _missingForCalibration = new(StringComparer.OrdinalIgnoreCase);
 
     // 1フレームの中で、トラッキング情報は必要になったときに1回だけ取る。
     private TrackingSnapshot? _frameTracking;
@@ -325,6 +329,7 @@ public sealed class MainLoop : IDisposable
 
         Log.Info($"Calibration started ({_config.Calibration.CountdownSeconds} s countdown).");
         _calibration.Start(_config.Calibration.CountdownSeconds);
+        _sampleWindow = CalibrationSampler.WindowFor(_config.Calibration.CountdownSeconds);
         _sampler.Clear();
     }
 
@@ -345,14 +350,14 @@ public sealed class MainLoop : IDisposable
     private void UpdateCalibration()
     {
         // 最後の 1 秒は毎フレーム手の位置を集める（撮るフレームの分も含む）。
-        if (_calibration.Active && _calibration.Remaining <= CalibrationSampler.Window)
+        if (_calibration.Active && _calibration.Remaining <= _sampleWindow)
         {
             var anchor = _config.Regions.FirstOrDefault(r => r.Id == _config.Calibration.RegionId)?.Anchor as DeviceAnchorSpec;
             var tracking = Tracking;
-            CheckSerial(tracking, _config.Hands.LeftHandSerial, "tracking.leftHandSerial", "NO LEFT TRACKER");
-            CheckSerial(tracking, _config.Hands.RightHandSerial, "tracking.rightHandSerial", "NO RIGHT TRACKER");
-            CheckSerial(tracking, _config.Auto.DeviceSerial, "auto.deviceSerial", "NO AUTO TRACKER");
-            _sampler.Add(tracking, _config.Hands, anchor, _config.Auto.DeviceSerial);
+            CheckSerial(_missingForCalibration, tracking, _config.Hands.LeftHandSerial, "tracking.leftHandSerial", toast: null);
+            CheckSerial(_missingForCalibration, tracking, _config.Hands.RightHandSerial, "tracking.rightHandSerial", toast: null);
+            CheckSerial(_missingForCalibration, tracking, _config.Auto.DeviceSerial, "auto.deviceSerial", toast: null);
+            _sampler.Add(tracking, new CalibrationDevices(_config.Hands, anchor, _config.Auto.DeviceSerial));
         }
 
         var step = _calibration.Update();
@@ -389,8 +394,19 @@ public sealed class MainLoop : IDisposable
         }
 
         var samples = FormattableString.Invariant(
-            $"frames in the last {CalibrationSampler.Window.TotalSeconds:0.#} s: hmd {_sampler.HmdSamples}, left {_sampler.LeftSamples}, right {_sampler.RightSamples}");
-        var input = _sampler.TryGetInput(_config.Hands, region.Anchor is DeviceAnchorSpec, out var error, _config.Auto.DeviceSerial);
+            $"frames in the last {_sampleWindow.TotalSeconds:0.#} s: hmd {_sampler.HmdSamples}, left {_sampler.LeftSamples}, right {_sampler.RightSamples}");
+        if (region.Anchor is DeviceAnchorSpec)
+        {
+            samples += FormattableString.Invariant($", anchor {_sampler.AnchorSamples}");
+        }
+
+        if (_config.Auto.DeviceSerial is not null)
+        {
+            samples += FormattableString.Invariant($", auto device {_sampler.PostureSamples}");
+        }
+
+        // 自動モードが位置で判定するときだけ、auto.deviceSerial のデバイスを必須にする（頭の傾きだけなら、無くても窓は合わせられる）。
+        var input = _sampler.TryGetInput(requirePosture: _config.Auto.UseLeftHand, out var error);
         _sampler.Clear();
         if (input is null)
         {
@@ -447,11 +463,11 @@ public sealed class MainLoop : IDisposable
         {
             if (_config.Auto.DeviceSerial is { } serial)
             {
-                CheckSerial(tracking, serial, "auto.deviceSerial", "NO AUTO TRACKER");
+                CheckSerial(_missingForAuto, tracking, serial, "auto.deviceSerial", "NO AUTO TRACKER");
             }
             else
             {
-                CheckSerial(tracking, _config.Hands.LeftHandSerial, "tracking.leftHandSerial", "NO LEFT TRACKER");
+                CheckSerial(_missingForAuto, tracking, _config.Hands.LeftHandSerial, "tracking.leftHandSerial", "NO LEFT TRACKER");
             }
         }
 
@@ -532,18 +548,20 @@ public sealed class MainLoop : IDisposable
     }
 
     /// <summary>
-    /// 手の代わりに指定したデバイスが無ければ、ログと通知表示で一度だけ知らせる（見つかったらログで知らせ、また無くなったら知らせる）。
+    /// 手や左手の代わりに指定したデバイスが無ければ、ログ（と、<paramref name="toast"/> があれば通知表示）で一度だけ知らせる。
+    /// 見つかったらログで知らせ、また無くなったらもう一度知らせる。
     /// </summary>
-    private void CheckSerial(TrackingSnapshot tracking, string? serial, string setting, string message)
+    private void CheckSerial(HashSet<string> missing, TrackingSnapshot tracking, string? serial, string setting, string? toast)
     {
         if (serial is null)
         {
             return;
         }
 
+        var key = setting + "=" + serial;
         if (tracking.SerialToIndex.ContainsKey(serial))
         {
-            if (_missingSerials.Remove(serial))
+            if (missing.Remove(key))
             {
                 Log.Info($"Device with serial \"{serial}\" ({setting}) found.");
             }
@@ -551,11 +569,14 @@ public sealed class MainLoop : IDisposable
             return;
         }
 
-        if (_missingSerials.Add(serial))
+        if (missing.Add(key))
         {
             // 打ち間違いに気づけるように、接続中のデバイスも出す。
             Log.Warn($"No connected device has serial \"{serial}\" ({setting}). Connected: {string.Join(", ", tracking.SerialToIndex.Keys)}.");
-            _status.Show(message, StatusKind.Error, ResultDuration);
+            if (toast is not null)
+            {
+                _status.Show(toast, StatusKind.Error, ResultDuration);
+            }
         }
     }
 

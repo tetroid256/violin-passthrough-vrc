@@ -80,7 +80,7 @@ public class MainLoopPhase7Tests
         Run(TimeSpan.FromSeconds(0.6));
 
         var result = Assert.Single(_config.Calibrations);
-        Assert.Equal(LeftLocal.X, result.LeftHandPosition.X, 9);
+        Assert.Equal(LeftLocal.X, result.LeftHandPosition!.Value.X, 9);
         Assert.Equal("CALIBRATED", _status.CurrentText);
     }
 
@@ -96,7 +96,7 @@ public class MainLoopPhase7Tests
         Run(TimeSpan.FromSeconds(1.3));
 
         var result = Assert.Single(_config.Calibrations);
-        Assert.Equal(LeftLocal.Y, result.LeftHandPosition.Y, 9);
+        Assert.Equal(LeftLocal.Y, result.LeftHandPosition!.Value.Y, 9);
     }
 
     [Fact]
@@ -123,8 +123,8 @@ public class MainLoopPhase7Tests
         t.Run(TimeSpan.FromSeconds(5.05));
 
         var result = Assert.Single(t._config.Calibrations);
-        Assert.Equal(trackerLocal.X, result.LeftHandPosition.X, 9);
-        Assert.Equal(trackerLocal.Z, result.LeftHandPosition.Z, 9);
+        Assert.Equal(trackerLocal.X, result.LeftHandPosition!.Value.X, 9);
+        Assert.Equal(trackerLocal.Z, result.LeftHandPosition!.Value.Z, 9);
     }
 
     [Fact]
@@ -193,8 +193,10 @@ public class MainLoopPhase7Tests
     }
 
     [Fact]
-    public void AutoMode_MissingTracker_IsShownOnce_AndLoggedAgainWhenFound()
+    public void AutoMode_MissingTracker_IsShownOnce_LoggedWhenFound_AndShownAgainWhenLost()
     {
+        var logs = new List<string>();
+        ViolinPassthrough.Logging.Log.AddSink(line => { lock (logs) { logs.Add(line); } });
         var t = WithWristTracker();
         t.Receive(Enabled, true);
         t.Receive(Auto, true);
@@ -206,13 +208,124 @@ public class MainLoopPhase7Tests
         t._lifecycle.Snapshot = Tracking.WithTracker(Tracking.Make(Hmd, null, null), Serial, Tracking.AtLocal(Hmd, LeftLocal));
         t.Run(TimeSpan.FromSeconds(0.5));
         Assert.True(t.Fingerboard.Visible);
+        lock (logs)
+        {
+            Assert.Contains(logs, l => l.Contains($"\"{Serial}\" (tracking.leftHandSerial) found", StringComparison.Ordinal));
+        }
+
+        t._lifecycle.Snapshot = Tracking.Make(Hmd, null, null);
+        t._loop.Tick();
+        Assert.Equal("NO LEFT TRACKER", t._status.CurrentText);
     }
 
-    private IOscEndpoint CreateOsc(ViolinPassthrough.Config.OscSettings settings)
+    [Fact]
+    public void AutoMode_MissingAutoDevice_IsShown()
     {
-        var endpoint = new FakeOscEndpoint(settings);
-        _endpoints.Add(endpoint);
-        return endpoint;
+        var t = new MainLoopPhase7Tests(TestConfigs.DefaultWith("\"deviceSerial\": null", "\"deviceSerial\": \"LHR-VIOLIN\""));
+        t.Receive(Enabled, true);
+        t.Receive(Auto, true);
+
+        Assert.Equal("NO AUTO TRACKER", t._status.CurrentText);
+    }
+
+    [Fact]
+    public void AutoMode_HeadTiltOnly_DoesNotCheckTheTracker()
+    {
+        var t = new MainLoopPhase7Tests(TestConfigs.DefaultWith(
+            "\"useLeftHand\": true,\n    \"useHeadTilt\": false,\n    \"deviceSerial\": null,",
+            "\"useLeftHand\": false,\n    \"useHeadTilt\": true,\n    \"headUp\": [0, 1, 0],\n    \"deviceSerial\": \"LHR-VIOLIN\","));
+        t.Receive(Enabled, true);
+        t.Receive(Auto, true);
+
+        Assert.Equal("AUTO ON", t._status.CurrentText);
+    }
+
+    [Fact]
+    public void Calibration_MissingTracker_DoesNotHideTheLaterAutoModeWarning()
+    {
+        // キャリブレーション中はログだけにして、自動モードにしたときの通知は別に出す。
+        var t = WithWristTracker();
+        t.Receive(Calibrate, true);
+        t.Run(TimeSpan.FromSeconds(5.05));
+        Assert.Equal("CAL FAIL: NO LEFT TRACKER", t._status.CurrentText);
+        t.Run(TimeSpan.FromSeconds(3.5));
+
+        t.Receive(Enabled, true);
+        t.Receive(Auto, true);
+
+        Assert.Equal("NO LEFT TRACKER", t._status.CurrentText);
+    }
+
+    [Fact]
+    public void Calibration_WithAMissingAutoDevice_StillPlacesThePlate_WhenAutoModeUsesHeadTiltOnly()
+    {
+        var t = new MainLoopPhase7Tests(TestConfigs.DefaultWith(
+            "\"useLeftHand\": true,\n    \"useHeadTilt\": false,\n    \"deviceSerial\": null,",
+            "\"useLeftHand\": false,\n    \"useHeadTilt\": true,\n    \"headUp\": [0, 1, 0],\n    \"deviceSerial\": \"LHR-VIOLIN\","));
+
+        t.Receive(Calibrate, true);
+        t.Run(TimeSpan.FromSeconds(5.05));
+
+        var result = Assert.Single(t._config.Calibrations);
+        Assert.Null(result.LeftHandPosition);
+    }
+
+    [Fact]
+    public void Calibration_WithAMissingAutoDevice_Fails_WhenAutoModeUsesThePosition()
+    {
+        var t = new MainLoopPhase7Tests(TestConfigs.DefaultWith("\"deviceSerial\": null", "\"deviceSerial\": \"LHR-VIOLIN\""));
+
+        t.Receive(Calibrate, true);
+        t.Run(TimeSpan.FromSeconds(5.05));
+
+        Assert.Empty(t._config.Calibrations);
+        Assert.Equal("CAL FAIL: NO AUTO TRACKER", t._status.CurrentText);
+    }
+
+    [Fact]
+    public void Calibration_WithAOneSecondCountdown_UsesOnlyTheLastHalfSecond()
+    {
+        // メニューを操作した直後（構える前）の位置を混ぜない。
+        var t = new MainLoopPhase7Tests(TestConfigs.DefaultWith("\"countdownSeconds\": 5", "\"countdownSeconds\": 1"));
+        t._lifecycle.Snapshot = Tracking.Make(Hmd, Lowered, RightLocal);
+        t.Receive(Calibrate, true);
+        t.Run(TimeSpan.FromSeconds(0.4));
+
+        t._lifecycle.Snapshot = Tracking.Make(Hmd, LeftLocal, RightLocal);
+        t.Run(TimeSpan.FromSeconds(0.7));
+
+        var result = Assert.Single(t._config.Calibrations);
+        Assert.Equal(LeftLocal.Y, result.LeftHandPosition!.Value.Y, 9);
+    }
+
+    [Fact]
+    public void Calibration_HandSeenOnlyOnTheCaptureFrame_IsEnough()
+    {
+        _lifecycle.Snapshot = Tracking.Make(Hmd, null, RightLocal);
+        Receive(Calibrate, true);
+        Run(TimeSpan.FromSeconds(4.9));
+        Assert.Empty(_config.Calibrations);
+
+        _lifecycle.Snapshot = Tracking.Make(Hmd, LeftLocal, RightLocal);
+        Run(TimeSpan.FromSeconds(0.2));
+
+        Assert.Single(_config.Calibrations);
+    }
+
+    [Fact]
+    public void Calibration_CancelAndRestart_StartsSamplingAfresh()
+    {
+        Receive(Calibrate, true);
+        Run(TimeSpan.FromSeconds(4.5));
+        Receive(Calibrate, false);
+
+        // やり直しでは、取り消す前の（最後の 1 秒の）位置を使わない。
+        _lifecycle.Snapshot = Tracking.Make(Hmd, null, RightLocal);
+        Receive(Calibrate, true);
+        Run(TimeSpan.FromSeconds(5.05));
+
+        Assert.Empty(_config.Calibrations);
+        Assert.Equal("CAL FAIL: NO LEFT HAND", _status.CurrentText);
     }
 
     [Fact]
@@ -226,7 +339,7 @@ public class MainLoopPhase7Tests
         t.Run(TimeSpan.FromSeconds(5.05));
 
         var result = Assert.Single(t._config.Calibrations);
-        Assert.Equal(violinLocal.X, result.LeftHandPosition.X, 9);
+        Assert.Equal(violinLocal.X, result.LeftHandPosition!.Value.X, 9);
         var expected = ViolinPassthrough.Calibration.Calibrator.Compute(
             Hmd, Tracking.AtLocal(Hmd, LeftLocal), Tracking.AtLocal(Hmd, RightLocal), TestConfigs.Default.Regions[0], 0.05, out _)!;
         Assert.Equal(expected.Position.X, result.Position.X, 9);
@@ -245,5 +358,12 @@ public class MainLoopPhase7Tests
         t._lifecycle.Snapshot = Tracking.WithTracker(Tracking.Make(Hmd, null, null), "LHR-VIOLIN", Tracking.AtLocal(Hmd, new Vec3(-0.35, -0.10, -0.35)));
         t.Run(TimeSpan.FromSeconds(0.5));
         Assert.True(t.Fingerboard.Visible);
+    }
+
+    private IOscEndpoint CreateOsc(ViolinPassthrough.Config.OscSettings settings)
+    {
+        var endpoint = new FakeOscEndpoint(settings);
+        _endpoints.Add(endpoint);
+        return endpoint;
     }
 }
