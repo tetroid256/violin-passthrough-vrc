@@ -135,7 +135,7 @@ VRChat でバイオリンのモデルを見せるときのために、本アプ�
 
 指板を押さえる左手は、ハンドトラッキングが外れやすい。対策は [docs/TRACKING.md](docs/TRACKING.md) にまとめた。要点:
 - キャリブレーションは最後の 1 秒の平均を使うので、一瞬外れても失敗しない（設定不要）。
-- 機材なしなら、自動モードを頭の傾きで判定する（`"auto": { "useLeftHand": false, "useHeadTilt": true }`）。
+- 機材なしなら、アバターメニューの **Auto Method** で判定方法を **Hand + Head**（左手を見失っている間は頭の傾きで判定）か **Head**（頭の傾きだけ）にする（キャリブレーションを一度してから）。
 - 楽器に SteamVR のトラッカーを付けたら `auto.deviceSerial` に、手首に付けたら `tracking.leftHandSerial` にシリアル番号を書く（番号は `--console` のログの `Tracked devices:` に出る）。窓を楽器のトラッカーに追従させて（`"anchor": { "type": "device", "serial": "..." }`）キャリブレーションすることもできる。
 - 見つからないときは視界に `NO LEFT TRACKER` / `NO AUTO TRACKER` と出る。
 - VRChat のアバターの手が飛ぶ問題は、本アプリでは直せない（docs/TRACKING.md の 4）。

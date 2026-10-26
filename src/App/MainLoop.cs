@@ -63,6 +63,8 @@ public sealed class MainLoop : IDisposable
     private readonly HashSet<string> _missingForCalibration = new(StringComparer.OrdinalIgnoreCase);
 
     private ViolinState _loggedViolinState = ViolinState.Away;
+    private AutoMethod _postureMethod;
+    private bool _headWarned;
 
     // 1フレームの中で、トラッキング情報は必要になったときに1回だけ取る。
     private TrackingSnapshot? _frameTracking;
@@ -87,6 +89,7 @@ public sealed class MainLoop : IDisposable
         _beeper = beeper;
         _posture = new PostureDetector(_time);
         _calibration = new CalibrationSession(_time);
+        _postureMethod = state.AutoMethod;
         _config = configSource.Current;
         // 起動時から設定が壊れていた（既定の設定で動いている）ときも、最初のフレームで知らせる。
         _seenInvalidCount = 0;
@@ -172,6 +175,7 @@ public sealed class MainLoop : IDisposable
 
         EnsureOsc();
         ReceiveOsc();
+        WarnIfHeadNotCalibrated();
         UpdateCalibration();
         UpdatePosture();
         LogViolinState();
@@ -195,12 +199,45 @@ public sealed class MainLoop : IDisposable
 
     public void Dispose()
     {
+        ResetAvatarOnExit();
         _osc?.Dispose();
         _osc = null;
         _status.Dispose();
     }
 
     private TrackingSnapshot Tracking => _frameTracking ??= _lifecycle.GetTrackingSnapshot();
+
+    /// <summary>
+    /// 終了するときに、アプリがいないと戻せない値を VRChat で 0 に戻す。バイオリンのモデルの状態は同期していて
+    /// 他のプレイヤーにも見えるので、出したまま（構えたまま）にしない。キャリブレーションのトグルも OFF にする。
+    /// 異常終了したときは送れない。
+    /// </summary>
+    private void ResetAvatarOnExit()
+    {
+        if (_osc is null || _bindings is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_state.ViolinMode != ViolinMode.Away || _vrchat.ViolinState != (int)ViolinState.Away || _vrchat.Violin != (int)ViolinMode.Away)
+            {
+                _osc.Send(new OscMessage(_bindings.ViolinStateAddress, (int)ViolinState.Away));
+                _osc.Send(new OscMessage(_bindings.ViolinAddress, (int)ViolinMode.Away));
+                Log.Info("Violin model put away on exit.");
+            }
+
+            if (_calibration.Active || _vrchat.Calibrate == true)
+            {
+                _osc.Send(new OscMessage(_bindings.CalibrateAddress, false));
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Could not reset the avatar parameters on exit: " + ex.Message);
+        }
+    }
 
     private void ApplyConfig(ResolvedConfig next)
     {
@@ -322,6 +359,7 @@ public sealed class MainLoop : IDisposable
             {
                 // 頭の傾きの基準はキャリブレーションで記録する。それまでは左手で判定する。
                 _status.Show("CALIBRATE FOR HEAD", StatusKind.Error, ResultDuration);
+                _headWarned = true;
             }
             else
             {
@@ -489,6 +527,16 @@ public sealed class MainLoop : IDisposable
             return;
         }
 
+        // 構える前に判定方法を変えたら、前の方法で数えていた待ち時間は使わない。
+        if (_state.AutoMethod != _postureMethod)
+        {
+            _postureMethod = _state.AutoMethod;
+            if (!_state.InPosture)
+            {
+                _posture.Reset();
+            }
+        }
+
         var settings = EffectiveAutoSettings();
         var tracking = Tracking;
         if (settings.UseLeftHand)
@@ -521,6 +569,28 @@ public sealed class MainLoop : IDisposable
         var hand = method.UsesLeftHand() || !head;
         var auto = _config.Auto;
         return auto.UseLeftHand == hand && auto.UseHeadTilt == head ? auto : auto with { UseLeftHand = hand, UseHeadTilt = head };
+    }
+
+    /// <summary>
+    /// 頭の傾きを使う判定方法なのに基準（<c>auto.headUp</c>）が無ければ、判定が要るときに一度だけ知らせる
+    /// （起動時や設定の再読み込みでそうなったときも。OSC で切り替えたときは <see cref="ShowStateToast"/> が出す）。
+    /// </summary>
+    private void WarnIfHeadNotCalibrated()
+    {
+        if (!_state.AutoMethod.UsesHead() || _config.Auto.HeadUp is not null)
+        {
+            _headWarned = false;
+            return;
+        }
+
+        if (_headWarned || !_state.NeedsPostureDetection)
+        {
+            return;
+        }
+
+        _headWarned = true;
+        Log.Warn($"Auto method {_state.AutoMethod} uses the head tilt, but auto.headUp is not recorded yet; using the left hand until you calibrate.");
+        _status.Show("CALIBRATE FOR HEAD", StatusKind.Error, ResultDuration);
     }
 
     /// <summary>バイオリンのモデルの状態が変わったらログに出す（アバターへは <see cref="SendStateToVrchat"/> で送る）。</summary>

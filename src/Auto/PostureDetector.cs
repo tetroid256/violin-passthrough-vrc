@@ -7,7 +7,7 @@ namespace ViolinPassthrough.Auto;
 /// <param name="UseLeftHand">左手（または <see cref="DeviceSerial"/> のデバイス）の位置で判定する。</param>
 /// <param name="UseHeadTilt">頭の傾きで判定する。</param>
 /// <param name="LeftHandPosition">HMD から見た、構えたときの左手（または <see cref="DeviceSerial"/> のデバイス）の位置。</param>
-/// <param name="HeadUp">HMD から見た、構えたときの「上」の向き。<see cref="UseHeadTilt"/> のときは必須。</param>
+/// <param name="HeadUp">HMD から見た、構えたときの「上」の向き。無ければ頭の傾きでは判定しない。</param>
 /// <param name="RadiusMeters">左手（または <see cref="DeviceSerial"/> のデバイス）がこの距離以内なら構えている。</param>
 /// <param name="HeadTiltToleranceDeg">「上」の向きがこの角度以内なら構えている。</param>
 /// <param name="EnterDelaySeconds">構えた状態がこの時間続いたら表示する。</param>
@@ -119,6 +119,7 @@ public sealed class PostureDetector
             // 使える条件が無い（頭の傾きだけなのに基準が無い）。判定しない。
             return null;
         }
+
         if (settings.UseLeftHand)
         {
             var index = PostureDeviceIndex(settings, tracking, hands);

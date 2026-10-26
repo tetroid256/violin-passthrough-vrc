@@ -556,8 +556,8 @@ public static partial class ConfigValidator
         }
 
         var before = errors.Count;
-        // 判定方法は OSC でも切り替えるので、左手を使わない設定でも基準の位置は持っておく（無ければ既定の位置）。
-        var leftHand = ValidateVector(auto.LeftHandPosition ?? new AutoConfig().LeftHandPosition, "leftHandPosition", "auto", required: true, errors);
+        // 判定方法は OSC でも切り替えるので、左手を使わない設定でも基準の位置は持っておく（null なら既定の位置）。
+        var leftHand = ValidateVector(auto.LeftHandPosition ?? new AutoConfig().LeftHandPosition, "leftHandPosition", "auto", required: false, errors);
         Vec3? headUp = null;
         if (auto.HeadUp is not null)
         {

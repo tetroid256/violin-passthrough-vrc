@@ -37,7 +37,7 @@ public class PassthroughStateTests
     [InlineData(true, false, ViolinMode.Away, false)]
     [InlineData(true, true, ViolinMode.Away, true)]
     [InlineData(false, false, ViolinMode.Hold, true)]
-    [InlineData(false, false, ViolinMode.Play, false)]
+    [InlineData(false, false, ViolinMode.Play, true)]
     public void PostureDetection_IsNeededForTheAutoWindowOrWhileHolding(bool enabled, bool auto, ViolinMode mode, bool expected)
     {
         var state = new PassthroughState(enabled, "fingerboard", false, auto);

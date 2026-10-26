@@ -227,12 +227,14 @@ public class MainLoopPhase8Tests
     }
 
     [Fact]
-    public void AvatarChange_ResendsTheViolinState()
+    public void AvatarChange_SendsTheViolinStateNow_AndAgainAfterTheGrace()
     {
         Receive(Violin, 2);
         Osc.TakeSent();
 
         Receive("/avatar/change", "avtr_other");
+        Assert.Contains($"{ViolinStateAddress} 2", Osc.TakeSent());
+
         Receive(Violin, 0); // 新しいアバターの既定値は無視する。
         Run(TimeSpan.FromSeconds(2.1));
 
@@ -255,6 +257,140 @@ public class MainLoopPhase8Tests
 
         var result = Assert.Single(t._config.Calibrations);
         Assert.Null(result.LeftHandPosition);
+    }
+
+    [Fact]
+    public void PlayThenHold_WhileStillRaised_StaysPlaying()
+    {
+        // 手動の「構える」の間も判定しているので、「持つ」に戻しても構えたままなら「持つ」を挟まない（モデルが行き来しない）。
+        _lifecycle.Snapshot = Tracking.Make(Hmd, LeftLocal, RightLocal);
+        Receive(Violin, 2);
+        Run(TimeSpan.FromSeconds(0.5));
+        Osc.TakeSent();
+
+        Receive(Violin, 1);
+
+        Assert.Equal(ViolinState.Playing, _state.ViolinState);
+        Assert.DoesNotContain(Osc.TakeSent(), m => m.StartsWith(ViolinStateAddress, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void HoldThenAway_WithAutoOn_KeepsDetectingForTheWindow()
+    {
+        _lifecycle.Snapshot = Tracking.Make(Hmd, LeftLocal, RightLocal);
+        Receive(Enabled, true);
+        Receive(Auto, true);
+        Receive(Violin, 1);
+        Run(TimeSpan.FromSeconds(0.5));
+        Assert.True(Fingerboard.Visible);
+
+        Receive(Violin, 0);
+
+        Assert.Equal(ViolinState.Away, _state.ViolinState);
+        Assert.True(_state.InPosture);
+        Assert.True(Fingerboard.Visible);
+    }
+
+    [Fact]
+    public void Exit_PutsTheViolinAway_AndTurnsCalibrateOff()
+    {
+        Receive(Violin, 2);
+        Receive(Calibrate, true);
+        Osc.TakeSent();
+
+        _loop.Dispose();
+
+        var sent = Osc.TakeSent();
+        Assert.Contains($"{ViolinStateAddress} 0", sent);
+        Assert.Contains($"{Violin} 0", sent);
+        Assert.Contains($"{Calibrate} False", sent);
+    }
+
+    [Fact]
+    public void Exit_WithTheViolinAway_SendsNothing()
+    {
+        _loop.Dispose();
+
+        Assert.Empty(Osc.TakeSent());
+    }
+
+    [Fact]
+    public void HeadMethodFromTheConfig_WithoutCalibration_IsReportedOnce()
+    {
+        var t = new MainLoopPhase8Tests(TestConfigs.DefaultWith(
+            "\"useLeftHand\": true,\n    \"useHeadTilt\": false,",
+            "\"useLeftHand\": false,\n    \"useHeadTilt\": true,"));
+        // 判定が要らない間は知らせない。
+        Assert.Null(t._status.CurrentText);
+
+        t.Receive(Enabled, true);
+        t.Receive(Auto, true);
+        Assert.Equal("CALIBRATE FOR HEAD", t._status.CurrentText);
+
+        t.Run(TimeSpan.FromSeconds(3.5));
+        Assert.Null(t._status.CurrentText);
+    }
+
+    [Fact]
+    public void OscMethod_SurvivesAnUnrelatedConfigReload()
+    {
+        Receive(Method, 2);
+
+        _config.Publish(TestConfigs.Parse(TestConfigs.DefaultWith("\"radiusMeters\": 0.15", "\"radiusMeters\": 0.2")));
+        _loop.Tick();
+
+        Assert.Equal(AutoMethod.Head, _state.AutoMethod);
+    }
+
+    [Fact]
+    public void MethodSwitch_WhileRaised_KeepsTheWindow_ThenUsesTheNewMethod()
+    {
+        var t = WithHeadReference();
+        t._lifecycle.Snapshot = Tracking.Make(Hmd, LeftLocal, RightLocal);
+        t.Receive(Enabled, true);
+        t.Receive(Auto, true);
+        t.Run(TimeSpan.FromSeconds(0.5));
+        Assert.True(t.Fingerboard.Visible);
+
+        // 頭を傾けていないので、頭の傾きだけの方法では外れている。すぐには消えず、待ち時間の後で消える。
+        t.Receive(Method, 2);
+        Assert.True(t.Fingerboard.Visible);
+        t.Run(TimeSpan.FromSeconds(2.5));
+        Assert.False(t.Fingerboard.Visible);
+    }
+
+    [Fact]
+    public void MethodSwitch_BeforeRaising_RestartsTheEnterDelay()
+    {
+        var t = WithHeadReference();
+        t._lifecycle.Snapshot = Tracking.Make(TiltedHmd, LeftLocal, RightLocal);
+        t.Receive(Enabled, true);
+        t.Receive(Auto, true);
+        t.Run(TimeSpan.FromSeconds(0.2));
+        Assert.False(t.Fingerboard.Visible);
+
+        // 前の方法で数えた 0.2 秒は使わない。
+        t.Receive(Method, 1);
+        t.Run(TimeSpan.FromSeconds(0.2));
+        Assert.False(t.Fingerboard.Visible);
+        t.Run(TimeSpan.FromSeconds(0.2));
+        Assert.True(t.Fingerboard.Visible);
+    }
+
+    [Fact]
+    public void Calibration_OscLeftHandMethod_RequiresTheAutoDevice_EvenIfTheConfigUsesTheHead()
+    {
+        var t = new MainLoopPhase8Tests(TestConfigs.DefaultWith(
+            "\"useLeftHand\": true,\n    \"useHeadTilt\": false,\n    \"deviceSerial\": null,",
+            "\"useLeftHand\": false,\n    \"useHeadTilt\": true,\n    \"deviceSerial\": \"LHR-VIOLIN\","));
+        t._lifecycle.Snapshot = Tracking.Make(Hmd, LeftLocal, RightLocal);
+        t.Receive(Method, 0);
+
+        t.Receive(Calibrate, true);
+        t.Run(TimeSpan.FromSeconds(5.05));
+
+        Assert.Empty(t._config.Calibrations);
+        Assert.Equal("CAL FAIL: NO AUTO TRACKER", t._status.CurrentText);
     }
 
     private IOscEndpoint CreateOsc(ViolinPassthrough.Config.OscSettings settings)

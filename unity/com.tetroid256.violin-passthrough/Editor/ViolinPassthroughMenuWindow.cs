@@ -151,7 +151,7 @@ namespace ViolinPassthrough.Editor
             EditorGUILayout.HelpBox(
                 "Must match \"osc.parameters\" in the app's config.json. Parameters are declared local-only " +
                 "(not synced, 0 synced bits), not saved, default 0 / false, except \"Violin state\" which is synced (8 bits) " +
-                "so other players see the violin model. Unchecked items only hide the menu control.",
+                "so other players see the violin model. Unchecked items only hide the menu control, except \"Violin\", which also leaves out its two parameters.",
                 MessageType.None);
             settings.enabledParameter = EditorGUILayout.TextField(
                 new GUIContent("Passthrough (Bool)", "osc.parameters.enabled"), settings.enabledParameter);

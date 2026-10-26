@@ -173,6 +173,8 @@ namespace ViolinPassthrough.Editor
 
             ValidatePresets(s, r);
 
+            if (avatar != null && s.includeViolin) CheckSyncedBits(avatar, r);
+
             if (avatar != null)
             {
                 var existing = FindExisting(avatar);
@@ -261,10 +263,30 @@ namespace ViolinPassthrough.Editor
                 {
                     r.Warnings.Add($"\"{name}\" is already in the avatar's Expression Parameters as {declared.valueType} (expected {expected}). Modular Avatar will report a type conflict when building. Remove it from \"{asset.name}\".");
                 }
-                else if ((!synced && declared.networkSynced) || declared.saved)
+                else if (!synced && (declared.networkSynced || declared.saved))
                 {
                     r.Warnings.Add($"\"{name}\" is already in the avatar's Expression Parameters with Synced/Saved enabled, so it will stay synced/saved. Remove it from \"{asset.name}\" to make it local-only.");
                 }
+                else if (synced && declared.saved)
+                {
+                    r.Warnings.Add($"\"{name}\" is already in the avatar's Expression Parameters with Saved enabled, so it will stay saved. Remove it from \"{asset.name}\".");
+                }
+            }
+        }
+
+        /// <summary>
+        /// バイオリンのモデルの状態（同期する Int、8 bit）を足すと、アバター自身の同期パラメータと合わせて上限（256 bit）を
+        /// 超えそうなら知らせる。他の MA コンポーネントが足す分は数えないので、目安。
+        /// </summary>
+        private static void CheckSyncedBits(VRCAvatarDescriptor avatar, ValidationResult r)
+        {
+            var asset = avatar.expressionParameters;
+            if (asset == null) return;
+
+            var total = asset.CalcTotalCost() + 8;
+            if (total > VRCExpressionParameters.MAX_PARAMETER_COST)
+            {
+                r.Warnings.Add($"The violin model state uses 8 synced bits; with the avatar's own parameters that is {total} of {VRCExpressionParameters.MAX_PARAMETER_COST}, so the upload will fail. Uncheck \"Violin\" or free synced parameters.");
             }
         }
 

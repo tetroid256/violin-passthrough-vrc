@@ -47,8 +47,11 @@ public sealed class PassthroughState
         _ => ViolinState.Away,
     };
 
-    /// <summary>構えているかの判定が要るか（自動モードで有効なとき、またはバイオリンを持っているとき）。</summary>
-    public bool NeedsPostureDetection => (Auto && Enabled) || ViolinMode == ViolinMode.Hold;
+    /// <summary>
+    /// 構えているかの判定が要るか（自動モードで有効なとき、またはバイオリンを出しているとき）。
+    /// 手動で「構える」の間も判定を続ける（「持つ」に戻したとき、構えたままなら「持つ」を挟まずに「構える」のままにするため）。
+    /// </summary>
+    public bool NeedsPostureDetection => (Auto && Enabled) || ViolinMode != ViolinMode.Away;
 
     /// <summary>変更のたびに増える。反映済みかどうかの判定に使う。</summary>
     public int Version { get; private set; }

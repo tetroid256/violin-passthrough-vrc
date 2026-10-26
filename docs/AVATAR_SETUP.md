@@ -53,7 +53,7 @@
 作られるもの:
 
 ```
-ViolinPassthrough OSC Menu   MA Parameters（8 個）+ MA Menu Installer + MA Menu Item（サブメニュー「Violin Passthrough」）
+ViolinPassthrough OSC Menu   MA Parameters（8 個。Violin を外すと 6 個）+ MA Menu Installer + MA Menu Item（サブメニュー「Violin Passthrough」）
 ├─ Passthrough               MA Menu Item: Toggle  HandPassthrough = 1
 ├─ Auto                      MA Menu Item: Toggle  HandPassthroughAuto = 1
 ├─ Auto Method               MA Menu Item: サブメニュー
@@ -100,7 +100,7 @@ ViolinPassthrough OSC Menu   MA Parameters（8 個）+ MA Menu Installer + MA Me
    | `HandPassthroughViolin` | Int | 0 | オフ | オフ |
    | `HandPassthroughViolinState` | Int | 0 | オフ | **オン** |
 
-2. Expressions Menu を 2 つ新しく作る（Project ウィンドウで右クリック > Create > VRChat > Avatars > Expressions Menu）。ここでは「Violin Passthrough」と「Violin Passthrough Preset」とする。
+2. Expressions Menu を新しく作る（Project ウィンドウで右クリック > Create > VRChat > Avatars > Expressions Menu）。ここでは「Violin Passthrough」「Violin Passthrough Preset」「Violin Passthrough Auto Method」「Violin Passthrough Violin」の 4 つとする（バイオリンのモデルを使わないなら最後の 1 つは不要）。
 3. アバターの **Menu**（ルートメニュー）に、Type = Sub Menu、Sub Menu = 「Violin Passthrough」のコントロールを追加する。
 4. 「Violin Passthrough」に次を追加する。
 
@@ -108,11 +108,11 @@ ViolinPassthrough OSC Menu   MA Parameters（8 個）+ MA Menu Installer + MA Me
    |---|---|---|---|
    | Passthrough | Toggle | `HandPassthrough` | 1 |
    | Auto | Toggle | `HandPassthroughAuto` | 1 |
-   | Auto Method | Sub Menu（Left Hand / Hand + Head / Head の Toggle。Parameter は `HandPassthroughAutoMethod`、Value は 0 / 1 / 2） | なし | - |
+   | Auto Method | Sub Menu（「Violin Passthrough Auto Method」。中に Left Hand / Hand + Head / Head の Toggle。Parameter は `HandPassthroughAutoMethod`、Value は 0 / 1 / 2） | なし | - |
    | Preset | Sub Menu（「Violin Passthrough Preset」） | なし | - |
    | Calibrate | Toggle | `HandPassthroughCalibrate` | 1 |
    | Debug | Toggle | `HandPassthroughDebug` | 1 |
-   | Violin | Sub Menu（Away / Hold / Play の Toggle。Parameter は `HandPassthroughViolin`、Value は 0 / 1 / 2） | なし | - |
+   | Violin | Sub Menu（「Violin Passthrough Violin」。中に Away / Hold / Play の Toggle。Parameter は `HandPassthroughViolin`、Value は 0 / 1 / 2） | なし | - |
 
 5. 「Violin Passthrough Preset」に、プリセットごとに Toggle を追加する（Parameter は `HandPassthroughPreset`、Value はプリセット番号）。既定の設定なら Fingerboard（Value 0）と Whole（Value 1）。
 6. アップロードする。
@@ -143,7 +143,7 @@ ViolinPassthrough OSC Menu   MA Parameters（8 個）+ MA Menu Installer + MA Me
 - **メニューを操作しても本アプリが反応しない／メニューの表示が合わない**:
   - パラメータ名が `config.json` の `osc.parameters` と一致しているか確認する。
   - VRChat は、アバターごとの OSC の設定（どのパラメータを送受信するか）をファイルに保存して使い回す。パラメータを追加・変更してアップロードし直しても、古い設定のままになることがある。アバターを更新したら、Action Menu > Options > OSC > **Reset Config** を実行する（DESIGN.md §9）。それでも直らなければ、VRChat を終了して `%USERPROFILE%\AppData\LocalLow\VRChat\VRChat\OSC\` の中にある、そのアバターの設定ファイル（`usr_...\Avatars\avtr_....json`）を消してから起動し直す。
-- **他のプレイヤーに見えないか心配**: パラメータはローカル専用なので同期されない。窓は自分の VR 表示にだけ出る。
+- **他のプレイヤーに見えないか心配**: パラメータはローカル専用なので同期されない。窓は自分の VR 表示にだけ出る。ただし `HandPassthroughViolinState`（バイオリンのモデルの状態）だけは、モデルを他のプレイヤーにも見せるために同期する。
 - **Modular Avatar のビルドでエラーが出る**: Console と MA のエラー表示を確認する。よくあるのは、アバターの Expression Parameters に同じ名前で型の違うパラメータがある場合（上の「補足」）。
 
 ## このエディタ拡張について
