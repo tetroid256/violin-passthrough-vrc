@@ -144,3 +144,23 @@ OSCQuery がうまく動かないとき（フォールバック）:
 - [ ] 手首にトラッカーを付けて `tracking.leftHandSerial` を設定すると、キャリブレーションと自動モードがトラッカーの位置で動く。
 - [ ] シリアル番号を打ち間違えると、視界に `NO LEFT TRACKER`（または `NO AUTO TRACKER`）と出て、ログに接続中のシリアル番号の一覧が出る。
 - [ ] 窓をトラッカー基準（`"anchor": { "type": "device", "serial": "..." }`）にしてキャリブレーションすると、その瞬間は HMD 基準と同じ場所に出て、楽器を動かすと窓が楽器についてくる。
+
+## Phase 8: 判定方法の切り替えとバイオリンのモデル
+
+準備: エディタ拡張でメニューを作り直す（**Add / Update**）か、手で `HandPassthroughAutoMethod`（Int）・`HandPassthroughViolin`（Int）・`HandPassthroughViolinState`（Int、**Synced をオン**）を追加してアップロードし、VRChat の OSC の **Reset Config** を実行する（docs/AVATAR_SETUP.md）。
+
+### 判定方法
+- [ ] キャリブレーションを一度してから、自動モードをオンにする。
+- [ ] **Auto Method > Hand + Head** にすると `AUTO: HAND+HEAD` と出る。左手を隠したまま（または弦を押さえてハンドトラッキングが外れた状態で）構えても窓が出る。
+- [ ] **Head** にすると、手の位置に関係なく、顎当てに顎を乗せて頭を傾けたときだけ窓が出る。首を少し傾けただけで出てしまうときは、`auto.headTiltToleranceDeg`（既定 15°）を小さくして結果を教えてください。
+- [ ] **Left Hand** に戻すと、今までどおり左手で判定する。
+- [ ] 設定ファイルの `auto.headUp` を消してから Head を選ぶと `CALIBRATE FOR HEAD` と出る。
+
+### バイオリンのモデルの状態（アニメーターが無くても確かめられる）
+- [ ] `--console` で起動しておき、**Violin > Hold** にすると `VIOLIN: HOLD` と出て、ログに `Violin model: Away -> Held.` と出る。
+- [ ] 構えるとログに `Held -> Playing.`、下ろして約 2 秒で `Playing -> Held.` と出る（自動モードがオフでも）。
+- [ ] **Play** にすると、下ろしていても `Playing` のまま。自動モードがオンなら窓も出る。
+- [ ] **Away** にすると `Away` に戻る。
+- [ ] （確かめられれば）VRChat のパラメータのデバッグ表示や、別のアカウント・友人の画面で、`HandPassthroughViolinState` が 0 / 1 / 2 に変わる（同期しているか）。
+- [ ] 判定が出たり消えたりして状態がばたつくときは、どの判定方法で起きたかを教えてください（他のプレイヤーにはモデルが行ったり来たりして見えるため）。
+

@@ -1,6 +1,6 @@
 # Violin Passthrough（Modular Avatar メニュー）
 
-VRChat のアバターに、Violin Passthrough を操作するメニュー（OSC 用のアバターパラメータ 5 個とトグル）を、[Modular Avatar](https://modular-avatar.nadena.dev/) を使って非破壊で追加する Unity エディタ拡張。
+VRChat のアバターに、Violin Passthrough を操作するメニュー（OSC 用のアバターパラメータとトグル）を、[Modular Avatar](https://modular-avatar.nadena.dev/) を使って非破壊で追加する Unity エディタ拡張。
 
 ## 必要なもの
 
@@ -29,14 +29,17 @@ Modular Avatar か VRChat SDK が入っていない（またはバージョン�
 ViolinPassthrough OSC Menu   MA Parameters + MA Menu Installer + サブメニュー「Violin Passthrough」
 ├─ Passthrough               Toggle  HandPassthrough = 1
 ├─ Auto                      Toggle  HandPassthroughAuto = 1
+├─ Auto Method               サブメニュー（Left Hand = 0 / Hand + Head = 1 / Head = 2。HandPassthroughAutoMethod）
 ├─ Preset                    サブメニュー
 │  ├─ Fingerboard            Toggle  HandPassthroughPreset = 0
 │  └─ Whole                  Toggle  HandPassthroughPreset = 1
 ├─ Calibrate                 Toggle  HandPassthroughCalibrate = 1
-└─ Debug                     Toggle  HandPassthroughDebug = 1
+├─ Debug                     Toggle  HandPassthroughDebug = 1
+└─ Violin                    サブメニュー（Away = 0 / Hold = 1 / Play = 2。HandPassthroughViolin）
 ```
 
-- パラメータはすべてローカル専用（同期しない）・保存しない・既定値 0。
+- パラメータは保存しない・既定値 0。`HandPassthroughViolinState`（アプリが送るバイオリンのモデルの状態）だけ同期し（8 bit）、他はローカル専用（同期しない）。バイオリンのモデルを使わないアバターでは、画面の **Violin** を外す（同期するパラメータも入れない）。
+- バイオリンのモデルのアニメーター（出し入れ・追従先の切り替え・左手の固定）はまだ作らない。
 - アバター本体の Expressions Menu / Expression Parameters アセットは変更しない。アップロード時に Modular Avatar が合成する。
 - もう一度 Add / Update を押すと、同じ名前のオブジェクトを作り直す。**Remove**、オブジェクトの削除、Undo（Ctrl+Z）で元に戻せる。
 - 作ったオブジェクトは Modular Avatar のコンポーネントだけでできているので、このパッケージを消しても動く。プレハブにして他のアバターに使い回してもよい。

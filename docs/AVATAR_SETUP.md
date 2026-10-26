@@ -1,6 +1,6 @@
 # アバターへのメニューの追加
 
-本アプリは、VRChat のアバターパラメータを OSC で受け取って動く。また、今の状態を VRChat に送り返すので、アバターメニューの表示が実際の状態と合う。そのため、使うアバターすべてに次の 5 つのパラメータと、それを操作するメニューを入れる。アニメーター（レイヤー）の変更は要らない。
+本アプリは、VRChat のアバターパラメータを OSC で受け取って動く。また、今の状態を VRChat に送り返すので、アバターメニューの表示が実際の状態と合う。そのため、使うアバターすべてに次のパラメータと、それを操作するメニューを入れる。パススルーの窓だけならアニメーター（レイヤー）の変更は要らない（バイオリンのモデルを出し入れするときは、モデル用のアニメーターを自分で作る。下の「バイオリンのモデル」）。
 
 - **A. Modular Avatar を使う（おすすめ）**: 同梱のエディタ拡張でまとめて追加できる。
 - **B. 手で設定する**: Modular Avatar を使わない場合。
@@ -14,10 +14,13 @@
 | `HandPassthroughDebug` | Bool | マスクの窓を色付きで表示する（位置合わせ用） | `osc.parameters.debug` |
 | `HandPassthroughAuto` | Bool | 自動モード（楽器を構えている間だけ窓を出す） | `osc.parameters.auto` |
 | `HandPassthroughCalibrate` | Bool | ON でカウントダウン（既定 5 秒）の後にキャリブレーションする。終わると本アプリが OFF に戻す。カウントダウン中に OFF にすると取り消す | `osc.parameters.calibrate` |
+| `HandPassthroughAutoMethod` | Int | 自動モードの判定方法。0 = 左手のみ、1 = 左手と頭の傾き、2 = 頭の傾きのみ | `osc.parameters.autoMethod` |
+| `HandPassthroughViolin` | Int | バイオリンのモデルの扱い（メニューで選ぶ）。0 = しまう、1 = 持つ（構えたかは自動で判定）、2 = 構える（手動で固定） | `osc.parameters.violin` |
+| `HandPassthroughViolinState` | Int | バイオリンのモデルの状態（**本アプリが送る**。アニメーターが読む）。0 = しまう、1 = 持つ（左手に追従）、2 = 構える（頭か胸に追従） | `osc.parameters.violinState` |
 
-5 つとも次の設定にする。
+次の設定にする。
 
-- **同期しない**（Synced のチェックを外す＝ローカル専用）。他のプレイヤーには見えず、同期パラメータの容量（256 bit）を消費しない。
+- **同期しない**（Synced のチェックを外す＝ローカル専用）。他のプレイヤーには見えず、同期パラメータの容量（256 bit）を消費しない。**ただし `HandPassthroughViolinState` だけは同期する**（他のプレイヤーにもモデルの出し入れを見せるため。Int なので 8 bit 使う）。バイオリンのモデルを使わないなら、`HandPassthroughViolin` と `HandPassthroughViolinState` は入れなくてよい。
 - **保存しない**（Saved のチェックを外す）。
 - **既定値 0**（Bool は false）。
 
@@ -40,7 +43,8 @@
 2. 画面の項目を確認する。
    - **Avatar**: 追加先のアバター（VRC Avatar Descriptor があるオブジェクト）。
    - **Menu label**: ルートメニューに出るサブメニューの名前（既定 `Violin Passthrough`）。
-   - **Auto / Calibrate / Debug**: それぞれのトグルをメニューに出すか。外してもパラメータは宣言する（OSC での状態の送り返しはそのまま）。
+   - **Auto / Calibrate / Debug**: それぞれのトグルをメニューに出すか。外してもパラメータは宣言する（OSC での状態の送り返しはそのまま）。Auto を出すときは、判定方法を選ぶ「Auto Method」も出す。
+   - **Violin**: バイオリンのモデルの「Away / Hold / Play」のメニューを出すか。出すと、モデルの状態のパラメータ（同期、8 bit）も宣言する。モデルが無いアバターでは外す。
    - **Avatar parameters**: パラメータ名。`config.json` の `osc.parameters` に合わせる（既定のままなら変更不要）。
    - **Presets**: プリセットのトグル（表示名と番号）。番号は `config.json` の `presets` の順番。既定は Fingerboard = 0、Whole = 1。プリセットを増やしたら行を足す。
 3. **Add / Update** を押す。アバターの直下に `ViolinPassthrough OSC Menu` ができて選択される。
@@ -49,15 +53,25 @@
 作られるもの:
 
 ```
-ViolinPassthrough OSC Menu   MA Parameters（5 個）+ MA Menu Installer + MA Menu Item（サブメニュー「Violin Passthrough」）
+ViolinPassthrough OSC Menu   MA Parameters（8 個）+ MA Menu Installer + MA Menu Item（サブメニュー「Violin Passthrough」）
 ├─ Passthrough               MA Menu Item: Toggle  HandPassthrough = 1
 ├─ Auto                      MA Menu Item: Toggle  HandPassthroughAuto = 1
+├─ Auto Method               MA Menu Item: サブメニュー
+│  ├─ Left Hand              MA Menu Item: Toggle  HandPassthroughAutoMethod = 0
+│  ├─ Hand + Head            MA Menu Item: Toggle  HandPassthroughAutoMethod = 1
+│  └─ Head                   MA Menu Item: Toggle  HandPassthroughAutoMethod = 2
 ├─ Preset                    MA Menu Item: サブメニュー（子オブジェクトから作る）
 │  ├─ Fingerboard            MA Menu Item: Toggle  HandPassthroughPreset = 0
 │  └─ Whole                  MA Menu Item: Toggle  HandPassthroughPreset = 1
 ├─ Calibrate                 MA Menu Item: Toggle  HandPassthroughCalibrate = 1
-└─ Debug                     MA Menu Item: Toggle  HandPassthroughDebug = 1
+├─ Debug                     MA Menu Item: Toggle  HandPassthroughDebug = 1
+└─ Violin                    MA Menu Item: サブメニュー
+   ├─ Away                   MA Menu Item: Toggle  HandPassthroughViolin = 0
+   ├─ Hold                   MA Menu Item: Toggle  HandPassthroughViolin = 1
+   └─ Play                   MA Menu Item: Toggle  HandPassthroughViolin = 2
 ```
+
+`HandPassthroughViolinState`（同期）はメニューには出さない（本アプリが送り、アニメーターが読む）。
 
 ### 補足
 
@@ -73,7 +87,7 @@ ViolinPassthrough OSC Menu   MA Parameters（5 個）+ MA Menu Installer + MA Me
 
 ## B. 手で設定する（Modular Avatar を使わない）
 
-1. アバターの VRC Avatar Descriptor > Expressions > **Parameters** のアセットに、5 つを追加する。
+1. アバターの VRC Avatar Descriptor > Expressions > **Parameters** のアセットに追加する（バイオリンのモデルを使わないなら下の 2 つは不要）。
 
    | Name | Type | Default | Saved | Synced |
    |---|---|---|---|---|
@@ -82,6 +96,9 @@ ViolinPassthrough OSC Menu   MA Parameters（5 個）+ MA Menu Installer + MA Me
    | `HandPassthroughDebug` | Bool | false | オフ | オフ |
    | `HandPassthroughAuto` | Bool | false | オフ | オフ |
    | `HandPassthroughCalibrate` | Bool | false | オフ | オフ |
+   | `HandPassthroughAutoMethod` | Int | 0 | オフ | オフ |
+   | `HandPassthroughViolin` | Int | 0 | オフ | オフ |
+   | `HandPassthroughViolinState` | Int | 0 | オフ | **オン** |
 
 2. Expressions Menu を 2 つ新しく作る（Project ウィンドウで右クリック > Create > VRChat > Avatars > Expressions Menu）。ここでは「Violin Passthrough」と「Violin Passthrough Preset」とする。
 3. アバターの **Menu**（ルートメニュー）に、Type = Sub Menu、Sub Menu = 「Violin Passthrough」のコントロールを追加する。
@@ -91,14 +108,30 @@ ViolinPassthrough OSC Menu   MA Parameters（5 個）+ MA Menu Installer + MA Me
    |---|---|---|---|
    | Passthrough | Toggle | `HandPassthrough` | 1 |
    | Auto | Toggle | `HandPassthroughAuto` | 1 |
+   | Auto Method | Sub Menu（Left Hand / Hand + Head / Head の Toggle。Parameter は `HandPassthroughAutoMethod`、Value は 0 / 1 / 2） | なし | - |
    | Preset | Sub Menu（「Violin Passthrough Preset」） | なし | - |
    | Calibrate | Toggle | `HandPassthroughCalibrate` | 1 |
    | Debug | Toggle | `HandPassthroughDebug` | 1 |
+   | Violin | Sub Menu（Away / Hold / Play の Toggle。Parameter は `HandPassthroughViolin`、Value は 0 / 1 / 2） | なし | - |
 
 5. 「Violin Passthrough Preset」に、プリセットごとに Toggle を追加する（Parameter は `HandPassthroughPreset`、Value はプリセット番号）。既定の設定なら Fingerboard（Value 0）と Whole（Value 1）。
 6. アップロードする。
 
 1 つのメニューに置けるのは 8 項目まで。ルートメニューが埋まっているときは、既存のサブメニューの中に置く。
+
+## バイオリンのモデル
+
+本アプリは、メニューの「Violin」（`HandPassthroughViolin`）と構えたかどうかの判定から、モデルの状態を決めて `HandPassthroughViolinState`（同期）に送る。モデルの出し入れと追従先の切り替えは、そのパラメータを読むアニメーターで行う。**このアニメーターはまだツールで作らない**ので、作る場合は自分で用意する（ツールでの自動生成は今後の予定。設計は DESIGN.md §17）。
+
+| `HandPassthroughViolinState` | モデル | 本体の追従先 | 弓 |
+|---|---|---|---|
+| 0（しまう） | 出さない | - | 出さない |
+| 1（持つ） | 出す | 左手 | 右手 |
+| 2（構える） | 出す | 頭か胸（胸の方が、左手をアニメーションに固定したときにネックと手がずれない） | 右手 |
+
+- メニューの選び方: **Hold** にしておくと、構える・下ろすを自動で判定して 1 と 2 を切り替える（判定方法は Auto Method）。**Play** は判定を使わずに 2 のままにする（判定がうまくいかないとき）。**Away** で 0。本物の楽器と弓を持つと両手がふさがるので、持つ前に Hold にしておく。
+- 構えている間（2）に、左手と左手の指を用意したアニメーションに固定すると、ハンドトラッキングが外れてもアバターの手が飛ばない。VRChat の Animator Tracking Control（State Behaviour）で、その状態だけ Left Hand と Left Fingers を Animation にする。
+- 自動モード（Auto）がオンなら、Play を選んでいる間も窓が出る。
 
 ## アップロード後の確認
 

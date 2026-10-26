@@ -38,9 +38,15 @@ namespace ViolinPassthrough.Editor
         public string debugParameter = "HandPassthroughDebug";
         public string autoParameter = "HandPassthroughAuto";
         public string calibrateParameter = "HandPassthroughCalibrate";
+        public string autoMethodParameter = "HandPassthroughAutoMethod";
+        public string violinParameter = "HandPassthroughViolin";
+        public string violinStateParameter = "HandPassthroughViolinState";
         public bool includeAuto = true;
         public bool includeCalibrate = true;
         public bool includeDebug = true;
+
+        // バイオリンのモデルの状態は他のプレイヤーにも見せるので同期する（8 bit）。モデルが無いアバターでは外せる
+        public bool includeViolin = true;
         public List<PresetEntry> presets = DefaultPresets();
 
         internal static List<PresetEntry> DefaultPresets()
@@ -48,14 +54,24 @@ namespace ViolinPassthrough.Editor
             return new List<PresetEntry> { new PresetEntry("Fingerboard", 0), new PresetEntry("Whole", 1) };
         }
 
-        /// <summary>宣言するパラメータ（表示名, パラメータ名, 型）。メニューに出さない項目のパラメータも宣言する。</summary>
-        internal IEnumerable<(string role, string name, ParameterSyncType type)> Parameters()
+        /// <summary>
+        /// 宣言するパラメータ（表示名, パラメータ名, 型, 同期するか）。メニューに出さない項目のパラメータも宣言する
+        /// （ローカルのみなので同期ビットを使わない）。バイオリンの 2 つは includeViolin のときだけ。
+        /// </summary>
+        internal IEnumerable<(string role, string name, ParameterSyncType type, bool synced)> Parameters()
         {
-            yield return ("Passthrough", enabledParameter, ParameterSyncType.Bool);
-            yield return ("Preset", presetParameter, ParameterSyncType.Int);
-            yield return ("Debug", debugParameter, ParameterSyncType.Bool);
-            yield return ("Auto", autoParameter, ParameterSyncType.Bool);
-            yield return ("Calibrate", calibrateParameter, ParameterSyncType.Bool);
+            yield return ("Passthrough", enabledParameter, ParameterSyncType.Bool, false);
+            yield return ("Preset", presetParameter, ParameterSyncType.Int, false);
+            yield return ("Debug", debugParameter, ParameterSyncType.Bool, false);
+            yield return ("Auto", autoParameter, ParameterSyncType.Bool, false);
+            yield return ("Calibrate", calibrateParameter, ParameterSyncType.Bool, false);
+            yield return ("Auto method", autoMethodParameter, ParameterSyncType.Int, false);
+            if (includeViolin)
+            {
+                // メニューの選択はアプリへの入力なのでローカル。アプリが決めた状態（ViolinState）はアニメーターが読むので同期する
+                yield return ("Violin", violinParameter, ParameterSyncType.Int, false);
+                yield return ("Violin state", violinStateParameter, ParameterSyncType.Int, true);
+            }
         }
     }
 
@@ -141,7 +157,7 @@ namespace ViolinPassthrough.Editor
             }
 
             var parameters = s.Parameters().ToList();
-            foreach (var (role, name, _) in parameters)
+            foreach (var (role, name, _, _) in parameters)
             {
                 var error = ValidateParameterName(name);
                 if (error != null) r.Errors.Add($"{role} parameter: {error}");
@@ -227,13 +243,13 @@ namespace ViolinPassthrough.Editor
         /// </summary>
         private static void CheckAvatarExpressionParameters(
             VRCAvatarDescriptor avatar,
-            List<(string role, string name, ParameterSyncType type)> parameters,
+            List<(string role, string name, ParameterSyncType type, bool synced)> parameters,
             ValidationResult r)
         {
             var asset = avatar.expressionParameters;
             if (asset == null || asset.parameters == null) return;
 
-            foreach (var (_, name, type) in parameters)
+            foreach (var (_, name, type, synced) in parameters)
             {
                 var declared = asset.parameters.FirstOrDefault(p => p != null && p.name == name);
                 if (declared == null) continue;
@@ -245,7 +261,7 @@ namespace ViolinPassthrough.Editor
                 {
                     r.Warnings.Add($"\"{name}\" is already in the avatar's Expression Parameters as {declared.valueType} (expected {expected}). Modular Avatar will report a type conflict when building. Remove it from \"{asset.name}\".");
                 }
-                else if (declared.networkSynced || declared.saved)
+                else if ((!synced && declared.networkSynced) || declared.saved)
                 {
                     r.Warnings.Add($"\"{name}\" is already in the avatar's Expression Parameters with Synced/Saved enabled, so it will stay synced/saved. Remove it from \"{asset.name}\" to make it local-only.");
                 }
@@ -256,7 +272,7 @@ namespace ViolinPassthrough.Editor
         private static void CheckOtherDeclarations(
             VRCAvatarDescriptor avatar,
             List<GameObject> existing,
-            List<(string role, string name, ParameterSyncType type)> parameters,
+            List<(string role, string name, ParameterSyncType type, bool synced)> parameters,
             ValidationResult r)
         {
             var names = new HashSet<string>(parameters.Select(p => p.name), StringComparer.Ordinal);
@@ -299,7 +315,7 @@ namespace ViolinPassthrough.Editor
                 var root = CreateChild(avatar.transform, RootObjectName, siblingIndex);
 
                 var parameters = Undo.AddComponent<ModularAvatarParameters>(root);
-                parameters.parameters = s.Parameters().Select(p => LocalParameter(p.name, p.type)).ToList();
+                parameters.parameters = s.Parameters().Select(p => Parameter(p.name, p.type, p.synced)).ToList();
 
                 // menuToAppend / installTargetMenu は null のまま: 同じオブジェクトの Menu Item をアバターのルートメニューに入れる
                 Undo.AddComponent<ModularAvatarMenuInstaller>(root);
@@ -308,7 +324,13 @@ namespace ViolinPassthrough.Editor
                 ConfigureSubMenu(Undo.AddComponent<ModularAvatarMenuItem>(root), s.menuLabel.Trim());
 
                 AddToggle(root.transform, "Passthrough", s.enabledParameter, 1f);
-                if (s.includeAuto) AddToggle(root.transform, "Auto", s.autoParameter, 1f);
+                if (s.includeAuto)
+                {
+                    AddToggle(root.transform, "Auto", s.autoParameter, 1f);
+
+                    // 判定方法（アプリの AutoMethod と同じ番号）。選ばれているものを押し直すと 0（左手）に戻る
+                    AddChoiceMenu(root.transform, "Auto Method", s.autoMethodParameter, "Left Hand", "Hand + Head", "Head");
+                }
 
                 if (s.presets != null && s.presets.Count > 0)
                 {
@@ -324,6 +346,9 @@ namespace ViolinPassthrough.Editor
 
                 if (s.includeCalibrate) AddToggle(root.transform, "Calibrate", s.calibrateParameter, 1f);
                 if (s.includeDebug) AddToggle(root.transform, "Debug", s.debugParameter, 1f);
+
+                // バイオリンのモデル（アプリの ViolinMode と同じ番号）。押し直すと 0（しまう）に戻る
+                if (s.includeViolin) AddChoiceMenu(root.transform, "Violin", s.violinParameter, "Away", "Hold", "Play");
 
                 Undo.CollapseUndoOperations(undoGroup);
                 MarkDirty(root);
@@ -360,7 +385,7 @@ namespace ViolinPassthrough.Editor
             MarkDirty(avatar.gameObject);
         }
 
-        private static ParameterConfig LocalParameter(string name, ParameterSyncType type)
+        private static ParameterConfig Parameter(string name, ParameterSyncType type, bool synced)
         {
             // localOnly = 同期しない（Synced のチェックなし）。syncType は型の指定で、NotSynced にすると Expression Parameters に載らない
             return new ParameterConfig
@@ -370,7 +395,7 @@ namespace ViolinPassthrough.Editor
                 internalParameter = false,
                 isPrefix = false,
                 syncType = type,
-                localOnly = true,
+                localOnly = !synced,
                 defaultValue = 0f,
                 hasExplicitDefaultValue = true,
                 saved = false,
@@ -392,6 +417,17 @@ namespace ViolinPassthrough.Editor
 
             Undo.RegisterCreatedObjectUndo(go, UndoName);
             return go;
+        }
+
+        /// <summary>Int パラメータの値を選ぶサブメニュー（値 0, 1, 2, ... の Toggle を並べる）。</summary>
+        private static void AddChoiceMenu(Transform parent, string name, string parameter, params string[] choices)
+        {
+            var menu = CreateChild(parent, name);
+            ConfigureSubMenu(Undo.AddComponent<ModularAvatarMenuItem>(menu), "");
+            for (var i = 0; i < choices.Length; i++)
+            {
+                AddToggle(menu.transform, choices[i], parameter, i);
+            }
         }
 
         private static void AddToggle(Transform parent, string label, string parameter, float value)
